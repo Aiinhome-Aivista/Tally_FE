@@ -193,31 +193,33 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
       </div>
 
       <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-        {configs.length === 0 ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            <Database size={48} style={{ opacity: 0.5, marginBottom: '16px' }} />
-            <p>No active connections found.</p>
-          </div>
-        ) : (
-          <div className="table-container">
-            <table>
-              <thead>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Connection Name</th>
+                <th>Host</th>
+                <th>Port</th>
+                <th>Company Name</th>
+                <th>Report Name</th>
+                <th>Scheduler</th>
+                <th>Last Sync</th>
+                <th>View</th>
+                <th>Edit</th>
+                <th>Run</th>
+                <th>Delete</th>
+              </tr>
+            </thead>
+            <tbody>
+              {configs.length === 0 ? (
                 <tr>
-                  <th>Connection Name</th>
-                  <th>Host</th>
-                  <th>Port</th>
-                  <th>Company Name</th>
-                  <th>Report Name</th>
-                  <th>Scheduler</th>
-                  <th>Last Sync</th>
-                  <th>View</th>
-                  <th>Edit</th>
-                  <th>Run</th>
-                  <th>Delete</th>
+                  <td colSpan="11" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
+                    <Database size={48} style={{ opacity: 0.5, marginBottom: '16px', display: 'inline-block' }} />
+                    <p style={{ margin: 0 }}>No active connections found.</p>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {configs.map((config) => (
+              ) : (
+                configs.map((config) => (
                   <tr key={config.id}>
                     <td style={{ fontWeight: 500, color: 'var(--accent-color)' }}>{config.connection_name}</td>
                     <td>{config.tally_host}</td>
@@ -272,11 +274,11 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {status && (

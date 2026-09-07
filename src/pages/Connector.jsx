@@ -28,8 +28,8 @@ const Connector = () => {
   const [isHidingToast, setIsHidingToast] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [customRequest, setCustomRequest] = useState(() => sessionStorage.getItem('tally_customRequest') || '');
-  const [responsePayload, setResponsePayload] = useState(() => sessionStorage.getItem('tally_responsePayload') || '');
+  const [customRequest, setCustomRequest] = useState('');
+  const [responsePayload, setResponsePayload] = useState('');
 
   const [showAddOptions, setShowAddOptions] = useState(false);
   const [isMysqlModalOpen, setIsMysqlModalOpen] = useState(false);
@@ -43,35 +43,6 @@ const Connector = () => {
   const [isMysqlValidating, setIsMysqlValidating] = useState(false);
   const [mysqlConnectionState, setMysqlConnectionState] = useState('unknown');
   const [showPassword, setShowPassword] = useState(false);
-
-  useEffect(() => {
-    sessionStorage.setItem('tally_customRequest', customRequest);
-  }, [customRequest]);
-
-  useEffect(() => {
-    if (!isModalOpen || isEditMode) return;
-
-    setCustomRequest(`<HEADER>
-  <TALLYREQUEST>Export Data</TALLYREQUEST>
-</HEADER>
-<BODY>
-  <DESC>
-    <STATICVARIABLES>
-      <SVEXPORTFORMAT>$$SysName:${fileFormat}</SVEXPORTFORMAT>
-      <SVCURRENTCOMPANY>${companyName}</SVCURRENTCOMPANY>
-    </STATICVARIABLES>
-    <TDL>
-      <TDLMESSAGE>
-        <REPORT NAME="${reportName}" />
-      </TDLMESSAGE>
-    </TDL>
-  </DESC>
-</BODY>`);
-  }, [fileFormat, companyName, reportName, isEditMode, isModalOpen]);
-
-  useEffect(() => {
-    sessionStorage.setItem('tally_responsePayload', responsePayload);
-  }, [responsePayload]);
 
   const showToast = (type, msg) => {
     setStatus({ type, msg });
@@ -87,8 +58,9 @@ const Connector = () => {
   };
 
   useEffect(() => {
+    sessionStorage.removeItem('tally_customRequest');
+    sessionStorage.removeItem('tally_responsePayload');
     fetchConfig();
-    fetchMysqlConfig();
   }, []);
 
   const fetchMysqlConfig = async () => {
@@ -174,7 +146,10 @@ const Connector = () => {
       const res = await axios.get(`${API_URL}/config`);
       if (Array.isArray(res.data)) {
         setAllConfigs(res.data);
-        const configData = res.data.find(c => c.connection_name === testName);
+        const configData = testName 
+          ? res.data.find(c => c.connection_name === testName)
+          : res.data[0];
+
         if (configData) {
           setSelectedConnectionName(configData.connection_name);
           setHost(configData.tally_host);
@@ -183,10 +158,21 @@ const Connector = () => {
           setReportName(configData.report_name || '');
           setFileFormat(configData.file_format || 'XML');
           setCustomRequest(configData.request_xml || '');
-          sessionStorage.setItem('tally_customRequest', configData.request_xml || '');
           setHasConfig(true);
 
-          runAutoTest(configData.connection_name, configData.tally_host, configData.tally_port, configData.request_xml);
+          if (testName) {
+            runAutoTest(configData.connection_name, configData.tally_host, configData.tally_port, configData.request_xml);
+          }
+        } else {
+          setHasConfig(false);
+          setSelectedConnectionName('');
+          setHost('localhost');
+          setPort(9000);
+          setCompanyName('');
+          setReportName('');
+          setFileFormat('XML');
+          setCustomRequest('');
+          setResponsePayload('');
         }
       }
     } catch (err) {
@@ -376,6 +362,16 @@ const Connector = () => {
         request_xml: customRequest
       };
 
+      // Save MySQL Config first
+      const mysqlPayload = {
+        host: mysqlConfig.host,
+        port: Number(mysqlConfig.port),
+        username: mysqlConfig.username,
+        password: mysqlConfig.password,
+        database_name: mysqlConfig.database
+      };
+      await axios.post(`${API_URL}/mysql/config`, mysqlPayload);
+
       if (isEditMode) {
         await axios.put(`${API_URL}/config/${connectionName}`, payload);
       } else {
@@ -528,6 +524,26 @@ const Connector = () => {
             setFileFormat('XML');
             setIsEditMode(false);
             setConnectionState('unknown');
+            setCustomRequest(`<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Data</TYPE>
+        <ID>Test Ledger</ID>
+    </HEADER>
+
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVEXPORTFORMAT>XML</SVEXPORTFORMAT>
+                <SVCURRENTCOMPANY>Test Company</SVCURRENTCOMPANY>
+            </STATICVARIABLES>
+        </DESC>
+    </BODY>
+</ENVELOPE>`);
+            setResponsePayload('');
+            setMysqlConfig({ host: '', port: '', username: '', password: '', database: '' });
+            setMysqlConnectionState('unknown');
             setIsModalOpen(true);
           }}>
             Add Connector
@@ -558,22 +574,24 @@ const Connector = () => {
             </div>
           </div>
 
-          <div style={{ marginTop: '32px' }}>
-            <ConnectorHistory
-              isEmbedded={true}
-              onConfigUpdated={triggerAutoTest}
-              onRunManualSync={triggerAutoTest}
-              onEditConnection={handleEditConnection}
-            />
-          </div>
+
         </>
       ) : (
-        <div style={{ backgroundColor: 'var(--bg-panel)', textAlign: 'center', padding: '64px 24px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+        <div style={{ backgroundColor: 'var(--bg-panel)', textAlign: 'center', padding: '32px 24px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
           <Server size={48} style={{ color: 'var(--text-secondary)', marginBottom: '16px', display: 'inline-block' }} />
           <h3 style={{ marginBottom: '8px', marginTop: 0 }}>No Connector Configured</h3>
           <p style={{ color: 'var(--text-secondary)' }}>Add a new connection to start syncing data from Tally.</p>
         </div>
       )}
+
+      <div style={{ marginTop: '16px' }}>
+        <ConnectorHistory
+          isEmbedded={true}
+          onConfigUpdated={triggerAutoTest}
+          onRunManualSync={triggerAutoTest}
+          onEditConnection={handleEditConnection}
+        />
+      </div>
 
       {isModalOpen && (
         <div className="modal-overlay">
@@ -620,7 +638,7 @@ const Connector = () => {
                       type="number"
                       className="form-input"
                       value={port}
-                      onChange={e => setPort(Number(e.target.value))}
+                      onChange={e => setPort(e.target.value === '' ? '' : Number(e.target.value))}
                       style={{ height: '44px', backgroundColor: 'var(--bg-panel)' }}
                       placeholder="9000"
                     />
@@ -701,7 +719,7 @@ const Connector = () => {
                       className="form-input"
                       value={mysqlConfig.port}
                       onChange={e => {
-                        setMysqlConfig({ ...mysqlConfig, port: e.target.value });
+                        setMysqlConfig({ ...mysqlConfig, port: e.target.value === '' ? '' : Number(e.target.value) });
                         setMysqlConnectionState('unknown');
                       }}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
