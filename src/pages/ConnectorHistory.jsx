@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
-const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync, onEditConnection }) => {
+const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync, onEditConnection, refreshTrigger }) => {
   const navigate = useNavigate();
   const [configs, setConfigs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,7 +63,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
 
   useEffect(() => {
     fetchConfigs();
-  }, []);
+  }, [refreshTrigger]);
 
   const showToast = (type, msg) => {
     setStatus({ type, msg });
