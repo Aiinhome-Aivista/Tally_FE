@@ -5,6 +5,20 @@ import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
+const CustomSpinner = ({ size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="12" cy="12" r="3" fill={color} />
+    <g className="spin" style={{ transformOrigin: 'center' }}>
+      <circle cx="12" cy="3" r="3" fill={color} />
+      <circle cx="19.79" cy="7.5" r="3" fill={color} />
+      <circle cx="19.79" cy="16.5" r="3" fill={color} />
+      <circle cx="12" cy="21" r="3" fill={color} />
+      <circle cx="4.21" cy="16.5" r="3" fill={color} />
+      <circle cx="4.21" cy="7.5" r="3" fill={color} />
+    </g>
+  </svg>
+);
+
 const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync, onEditConnection, refreshTrigger }) => {
   const navigate = useNavigate();
   const [configs, setConfigs] = useState([]);
@@ -196,7 +210,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
         <button
           className="btn"
           style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)' }}
-          onClick={fetchConfigs}
+          onClick={() => fetchConfigs()}
           disabled={isLoading}
         >
           <RefreshCw size={18} className={isLoading ? "spin" : ""} />
@@ -243,7 +257,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                     <td>
                       {isLoading ? (
                         <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>
-                          <Loader2 size={16} className="spin" />
+                          <CustomSpinner size={18} color="var(--text-secondary)" />
                         </span>
                       ) : config.sync_status === 'IN_PROGRESS' ? (
                         <span style={{ color: 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -259,7 +273,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                     </td>
                     <td style={{ fontWeight: 500 }}>
                       {isLoading ? (
-                         <Loader2 size={16} className="spin" style={{ color: 'var(--text-secondary)' }} />
+                         <CustomSpinner size={18} color="var(--text-secondary)" />
                       ) : (
                          config.rows_processed.toLocaleString()
                       )}

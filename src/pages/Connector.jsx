@@ -409,16 +409,42 @@ const Connector = () => {
       
       const logId = res.data.log_id;
       if (logId) {
-        setResponsePayload(`Sync initiated in background...`);
+        setResponsePayload(`Sync initiated in background... Please wait...`);
         showToast('success', 'Sync Started in Background');
+        
+        const pollProgress = async () => {
+          try {
+            const progressRes = await axios.get(`${API_URL}/sync/progress/${logId}`);
+            if (progressRes.data.status === 'IN_PROGRESS') {
+              setTimeout(pollProgress, 2000);
+            } else {
+              if (progressRes.data.status === 'SUCCESS') {
+                showToast('success', 'Sync Completed Successfully!');
+                setResponsePayload('Successfully completed');
+              } else {
+                showToast('error', 'Sync Failed');
+                setResponsePayload(`ERROR: ${progressRes.data.message || 'Unknown error'}`);
+              }
+              setHistoryRefreshKey(prev => prev + 1);
+              setIsSendingRequest(false);
+            }
+          } catch (e) {
+            console.error("Polling error", e);
+            showToast('error', 'Error checking sync status');
+            setIsSendingRequest(false);
+          }
+        };
+        
+        setTimeout(pollProgress, 2000);
+        return; // Exit early, polling will handle the rest
       } else {
          setResponsePayload(res.data.response_xml || 'Request successful.');
+         setHistoryRefreshKey(prev => prev + 1);
+         setIsSendingRequest(false);
       }
-      setHistoryRefreshKey(prev => prev + 1);
     } catch (err) {
       setResponsePayload(`ERROR: ${err.response?.data?.detail || 'Request failed.'}`);
       showToast('error', 'Sync Failed');
-    } finally {
       setIsSendingRequest(false);
     }
   };
@@ -497,9 +523,15 @@ const Connector = () => {
         <div style={{ position: 'relative' }}>
           <button className="btn btn-primary" onClick={() => {
             setConnectionName('');
-            setHost('localhost');
-            setPort(9000);
-            setCompanyName('');
+            if (allConfigs && allConfigs.length > 0) {
+              setHost(allConfigs[0].tally_host || 'localhost');
+              setPort(allConfigs[0].tally_port || 9000);
+              setCompanyName(allConfigs[0].company_name || '');
+            } else {
+              setHost('localhost');
+              setPort(9000);
+              setCompanyName('');
+            }
             setReportName('');
             setFileFormat('XML');
             setIsEditMode(false);
