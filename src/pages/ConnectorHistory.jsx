@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Eye, Play, Database, RefreshCw, XCircle, CheckCircle, Trash2, Edit2 } from 'lucide-react';
+import { Eye, Play, Database, RefreshCw, XCircle, CheckCircle, Trash2, Edit2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -25,30 +25,40 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
   const [isLogsLoading, setIsLogsLoading] = useState(false);
 
-  const fetchConfigs = async () => {
-    setIsLoading(true);
+  const fetchConfigs = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const res = await axios.get(`${API_URL}/config`);
-      let lastSync = 'Never';
-      try {
-        const logsRes = await axios.get(`${API_URL}/logs?skip=0&limit=1`);
-        if (logsRes.data && logsRes.data.logs && logsRes.data.logs.length > 0) {
-          const date = new Date(logsRes.data.logs[0].timestamp);
-          lastSync = new Intl.DateTimeFormat('en-US', {
-            month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-          }).format(date);
-        }
-      } catch (e) {
-        console.error("Failed to fetch logs for last sync", e);
-      }
-
-      // res.data is now an array
+      
       if (res.data && Array.isArray(res.data)) {
-        const configuredList = res.data.map((cfg, idx) => ({
-          id: idx + 1,
-          last_sync: lastSync,
-          ...cfg
+        const configuredList = await Promise.all(res.data.map(async (cfg, idx) => {
+          let lastSync = 'Never';
+          let syncStatus = 'N/A';
+          let rowsProcessed = 0;
+          
+          try {
+            const logsRes = await axios.get(`${API_URL}/logs?connection_name=${cfg.connection_name}&limit=1`);
+            if (logsRes.data && logsRes.data.logs && logsRes.data.logs.length > 0) {
+              const latestLog = logsRes.data.logs[0];
+              const date = new Date(latestLog.timestamp);
+              lastSync = new Intl.DateTimeFormat('en-US', {
+                month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+              }).format(date);
+              syncStatus = latestLog.status;
+              rowsProcessed = latestLog.records_fetched || 0;
+            }
+          } catch (e) {
+            console.error("Failed to fetch logs for", cfg.connection_name, e);
+          }
+          
+          return {
+            id: idx + 1,
+            last_sync: lastSync,
+            sync_status: syncStatus,
+            rows_processed: rowsProcessed,
+            ...cfg
+          };
         }));
         setConfigs(configuredList);
       } else {
@@ -57,13 +67,15 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     } catch (err) {
       console.error("Failed to fetch configs", err);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchConfigs();
   }, [refreshTrigger]);
+
+
 
   const showToast = (type, msg) => {
     setStatus({ type, msg });
@@ -202,6 +214,8 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                 <th>Port</th>
                 <th>Company Name</th>
                 <th>Report Name</th>
+                <th>Status</th>
+                <th>Rows Processed</th>
                 <th>Scheduler</th>
                 <th>Last Sync</th>
                 <th>View</th>
@@ -226,6 +240,30 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                     <td>{config.tally_port}</td>
                     <td>{config.company_name || 'N/A'}</td>
                     <td>{config.report_name || 'N/A'}</td>
+                    <td>
+                      {isLoading ? (
+                        <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>
+                          <Loader2 size={16} className="spin" />
+                        </span>
+                      ) : config.sync_status === 'IN_PROGRESS' ? (
+                        <span style={{ color: 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          In Progress...
+                        </span>
+                      ) : config.sync_status === 'SUCCESS' ? (
+                        <span style={{ color: 'var(--success)', fontWeight: 600 }}>Success</span>
+                      ) : config.sync_status === 'ERROR' ? (
+                        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>Failed</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)' }}>{config.sync_status}</span>
+                      )}
+                    </td>
+                    <td style={{ fontWeight: 500 }}>
+                      {isLoading ? (
+                         <Loader2 size={16} className="spin" style={{ color: 'var(--text-secondary)' }} />
+                      ) : (
+                         config.rows_processed.toLocaleString()
+                      )}
+                    </td>
                     <td>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--success)', fontWeight: 600, fontSize: '0.8rem', padding: '4px 10px', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '20px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                         <span className="blink-dot" style={{ backgroundColor: 'var(--success)' }}></span> Active

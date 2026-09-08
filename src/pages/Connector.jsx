@@ -398,8 +398,6 @@ const Connector = () => {
     setIsSendingRequest(true);
     setStatus(null);
     setResponsePayload('');
-    setSyncProgress(0);
-    setSyncStatus('IN_PROGRESS');
 
     try {
       const res = await axios.post(`${API_URL}/sync/start`, {
@@ -411,49 +409,17 @@ const Connector = () => {
       
       const logId = res.data.log_id;
       if (logId) {
-        setResponsePayload(`Sync started. log_id: ${logId}\nWaiting for progress...`);
-        // Start polling
-        const intervalId = setInterval(async () => {
-          try {
-            const progRes = await axios.get(`${API_URL}/sync/progress/${logId}`);
-            const data = progRes.data;
-            setSyncProgress(data.records_fetched || 0);
-            setSyncStatus(data.status);
-            
-            if (data.status === 'SUCCESS' || data.status === 'ERROR') {
-              clearInterval(intervalId);
-              setIsSendingRequest(false);
-              setHistoryRefreshKey(prev => prev + 1);
-              
-              if (data.status === 'SUCCESS') {
-                if (data.response_payload) {
-                   setResponsePayload(data.response_payload);
-                } else {
-                   setResponsePayload('');
-                }
-                showToast('success', `Sync completed successfully - ${data.records_fetched} rows stored.`);
-              } else {
-                showToast('error', `Sync failed: ${data.message}`);
-              }
-            }
-          } catch (pollErr) {
-            clearInterval(intervalId);
-            setIsSendingRequest(false);
-            setSyncStatus('ERROR');
-            setResponsePayload(`Polling error: ${pollErr.message}`);
-          }
-        }, 1500);
+        setResponsePayload(`Sync initiated in background...`);
+        showToast('success', 'Sync Started in Background');
       } else {
-         // Fallback if no log_id returned
          setResponsePayload(res.data.response_xml || 'Request successful.');
-         setIsSendingRequest(false);
-         setSyncStatus('SUCCESS');
       }
+      setHistoryRefreshKey(prev => prev + 1);
     } catch (err) {
-      setSyncStatus('ERROR');
       setResponsePayload(`ERROR: ${err.response?.data?.detail || 'Request failed.'}`);
-      setIsSendingRequest(false);
       showToast('error', 'Sync Failed');
+    } finally {
+      setIsSendingRequest(false);
     }
   };
 
@@ -500,34 +466,7 @@ const Connector = () => {
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--accent-color)' }}>Response:</label>
-          {syncStatus === 'SUCCESS' && !isSendingRequest && (
-            <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '12px', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>Data Preview</span>
-          )}
         </div>
-        
-        {syncStatus === 'SUCCESS' && !isSendingRequest && (
-          <div style={{ padding: '12px 16px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <div style={{ backgroundColor: 'var(--success)', borderRadius: '50%', padding: '4px', display: 'flex' }}>
-              <CheckCircle size={20} color="white" />
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, color: 'var(--success)', fontSize: '0.95rem' }}>Sync Completed Successfully!</div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{syncProgress.toLocaleString()} records processed and stored.</div>
-            </div>
-          </div>
-        )}
-
-        {syncStatus === 'ERROR' && !isSendingRequest && (
-          <div style={{ padding: '12px 16px', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <div style={{ backgroundColor: 'var(--danger)', borderRadius: '50%', padding: '4px', display: 'flex' }}>
-              <XCircle size={20} color="white" />
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, color: 'var(--danger)', fontSize: '0.95rem' }}>Sync Failed</div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>An error occurred during synchronization. Check logs for details.</div>
-            </div>
-          </div>
-        )}
 
         <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <textarea
@@ -544,57 +483,6 @@ const Connector = () => {
             readOnly
             value={responsePayload}
           />
-          {isSendingRequest && (
-            <div style={{
-              position: 'absolute',
-              top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(255, 255, 255, 0.9)',
-              backdropFilter: 'blur(4px)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              borderRadius: '6px',
-              zIndex: 10
-            }}>
-              {syncStatus === 'IN_PROGRESS' ? (
-                <div style={{ position: 'relative', width: '60px', height: '60px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '16px' }}>
-                  <div style={{
-                    position: 'absolute',
-                    width: '100%', height: '100%',
-                    border: '3px solid rgba(59, 130, 246, 0.2)',
-                    borderTopColor: 'var(--accent-color)',
-                    borderBottomColor: 'var(--accent-color)',
-                    borderRadius: '50%',
-                    animation: 'spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite'
-                  }}></div>
-                  <Database size={24} color="var(--accent-color)" />
-                </div>
-              ) : (
-                <div style={{ marginBottom: '16px' }}>
-                  {syncStatus === 'SUCCESS' ? <CheckCircle size={40} color="var(--success)" /> : <XCircle size={40} color="var(--danger)" />}
-                </div>
-              )}
-              <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                {syncStatus === 'IN_PROGRESS' ? 'Sync in progress...' : (syncStatus === 'SUCCESS' ? 'Sync Completed!' : 'Sync Failed')}
-              </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '24px', fontWeight: 500 }}>
-                {syncProgress.toLocaleString()} rows processed
-              </div>
-              {syncStatus === 'IN_PROGRESS' && (
-                <div style={{ width: '60%', height: '6px', backgroundColor: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden', position: 'relative' }}>
-                  <div style={{ 
-                    position: 'absolute',
-                    height: '100%', 
-                    backgroundColor: 'var(--accent-color)', 
-                    width: '30%', 
-                    borderRadius: '3px',
-                    animation: 'slide 1.5s infinite ease-in-out'
-                  }}></div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -722,7 +610,10 @@ const Connector = () => {
                       type="text"
                       className="form-input"
                       value={host}
-                      onChange={e => setHost(e.target.value)}
+                      onChange={e => {
+                        setHost(e.target.value);
+                        setConnectionState('unknown');
+                      }}
                       style={{ height: '44px', backgroundColor: 'var(--bg-panel)' }}
                       placeholder="localhost"
                     />
@@ -733,7 +624,10 @@ const Connector = () => {
                       type="number"
                       className="form-input"
                       value={port}
-                      onChange={e => setPort(e.target.value === '' ? '' : Number(e.target.value))}
+                      onChange={e => {
+                        setPort(e.target.value === '' ? '' : Number(e.target.value));
+                        setConnectionState('unknown');
+                      }}
                       style={{ height: '44px', backgroundColor: 'var(--bg-panel)' }}
                       placeholder="9000"
                     />
