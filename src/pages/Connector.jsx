@@ -17,6 +17,7 @@ const Connector = () => {
   const [companyName, setCompanyName] = useState('');
   const [reportName, setReportName] = useState('');
   const [fileFormat, setFileFormat] = useState('XML');
+  const [parameters, setParameters] = useState('');
   const [hasConfig, setHasConfig] = useState(false);
   const [status, setStatus] = useState(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -118,6 +119,7 @@ const Connector = () => {
         setCompanyName(configData.company_name || '');
         setReportName(configData.report_name || '');
         setFileFormat(configData.file_format || 'XML');
+        setParameters(configData.parameters ? JSON.stringify(configData.parameters, null, 2) : '');
 
         if (testName || !sessionStorage.getItem('tally_customRequest')) {
           setCustomRequest(configData.request_xml || '');
@@ -138,6 +140,7 @@ const Connector = () => {
         setCompanyName('');
         setReportName('');
         setFileFormat('XML');
+        setParameters('');
       }
     } catch (err) {
       console.error("Could not fetch config", err);
@@ -160,11 +163,12 @@ const Connector = () => {
           setCompanyName(configData.company_name || '');
           setReportName(configData.report_name || '');
           setFileFormat(configData.file_format || 'XML');
+          setParameters(configData.parameters ? JSON.stringify(configData.parameters, null, 2) : '');
           setCustomRequest(configData.request_xml || '');
           setHasConfig(true);
 
           if (testName) {
-            runAutoTest(configData.connection_name, configData.tally_host, configData.tally_port, configData.request_xml);
+            runAutoTest(configData.connection_name, configData.tally_host, configData.tally_port, configData.request_xml, configData.parameters);
           }
         } else {
           setHasConfig(false);
@@ -174,6 +178,7 @@ const Connector = () => {
           setCompanyName('');
           setReportName('');
           setFileFormat('XML');
+          setParameters('');
           setCustomRequest('');
           setResponsePayload('');
         }
@@ -193,6 +198,7 @@ const Connector = () => {
       setCompanyName(configData.company_name || '');
       setReportName(configData.report_name || '');
       setFileFormat(configData.file_format || 'XML');
+      setParameters(configData.parameters ? JSON.stringify(configData.parameters, null, 2) : '');
       setCustomRequest(configData.request_xml || '');
       sessionStorage.setItem('tally_customRequest', configData.request_xml || '');
     }
@@ -205,6 +211,7 @@ const Connector = () => {
     setCompanyName(config.company_name || '');
     setReportName(config.report_name || '');
     setFileFormat(config.file_format || 'XML');
+    setParameters(config.parameters ? JSON.stringify(config.parameters, null, 2) : '');
     setCustomRequest(config.request_xml || '');
     setIsEditMode(true);
     setConnectionState('connected');
@@ -358,6 +365,16 @@ const Connector = () => {
     setIsModalOpen(false);
 
     try {
+      let parsedParameters = null;
+      if (parameters && parameters.trim()) {
+        try {
+          parsedParameters = JSON.parse(parameters);
+        } catch (e) {
+          showToast('error', 'Invalid JSON in Parameters');
+          return;
+        }
+      }
+
       const payload = {
         connection_name: connectionName,
         tally_host: host,
@@ -365,7 +382,8 @@ const Connector = () => {
         company_name: companyName,
         report_name: reportName,
         file_format: fileFormat,
-        request_xml: customRequest
+        request_xml: customRequest,
+        parameters: parsedParameters
       };
 
       // Save MySQL Config first
@@ -394,7 +412,7 @@ const Connector = () => {
     }
   };
 
-  const runAutoTest = async (testName, testHost, testPort, testXml) => {
+  const runAutoTest = async (testName, testHost, testPort, testXml, testParams) => {
     setIsSendingRequest(true);
     setStatus(null);
     setResponsePayload('');
@@ -404,7 +422,8 @@ const Connector = () => {
         connection_name: testName,
         tally_host: testHost,
         tally_port: testPort,
-        request_xml: testXml
+        request_xml: testXml,
+        parameters: testParams || null
       });
       
       const logId = res.data.log_id;
@@ -534,6 +553,7 @@ const Connector = () => {
             }
             setReportName('');
             setFileFormat('XML');
+            setParameters('');
             setIsEditMode(false);
             setConnectionState('unknown');
             setCustomRequest(`<ENVELOPE>
@@ -708,6 +728,20 @@ const Connector = () => {
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Report Name</label>
                     <input className="form-input" value={reportName} onChange={e => setReportName(e.target.value)} style={{ backgroundColor: 'var(--bg-panel)' }} placeholder="e.g. Trial Balance" />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '24px' }}>
+                  <label className="form-label">Dynamic Parameters (JSON) - Optional</label>
+                  <textarea 
+                    className="form-input" 
+                    value={parameters} 
+                    onChange={e => setParameters(e.target.value)} 
+                    style={{ backgroundColor: 'var(--bg-panel)', fontFamily: 'monospace', minHeight: '80px', resize: 'vertical' }} 
+                    placeholder='{&#10;  "SVFROMDATE": "08-Apr-2025"&#10;}'
+                  />
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Variables defined here will replace their <code>{`{KEY}`}</code> counterparts in the XML payload.
                   </div>
                 </div>
               </div>

@@ -186,7 +186,8 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
         company_name: configObj.company_name,
         report_name: configObj.report_name,
         file_format: configObj.file_format,
-        request_xml: editRequestXml
+        request_xml: editRequestXml,
+        parameters: configObj.parameters
       });
       setIsEditModalOpen(false);
 
