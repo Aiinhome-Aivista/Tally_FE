@@ -29,6 +29,7 @@ const Connector = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [customRequest, setCustomRequest] = useState('');
+  const [dynamicFiltersStr, setDynamicFiltersStr] = useState('{\n  "FROM_DATE": "2024-04-01",\n  "TO_DATE": "2025-03-31"\n}');
   const [responsePayload, setResponsePayload] = useState('');
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStatus, setSyncStatus] = useState(null);
@@ -123,6 +124,8 @@ const Connector = () => {
           setCustomRequest(configData.request_xml || '');
           sessionStorage.setItem('tally_customRequest', configData.request_xml || '');
         }
+        
+        setDynamicFiltersStr(configData.dynamic_filters ? JSON.stringify(configData.dynamic_filters, null, 2) : '');
 
         setHasConfig(true);
         checkConnectionStatus();
@@ -175,6 +178,7 @@ const Connector = () => {
           setReportName('');
           setFileFormat('XML');
           setCustomRequest('');
+          setDynamicFiltersStr('{\n  "FROM_DATE": "2024-04-01",\n  "TO_DATE": "2025-03-31"\n}');
           setResponsePayload('');
         }
       }
@@ -194,6 +198,7 @@ const Connector = () => {
       setReportName(configData.report_name || '');
       setFileFormat(configData.file_format || 'XML');
       setCustomRequest(configData.request_xml || '');
+      setDynamicFiltersStr(configData.dynamic_filters ? JSON.stringify(configData.dynamic_filters, null, 2) : '{\n  "FROM_DATE": "2024-04-01",\n  "TO_DATE": "2025-03-31"\n}');
       sessionStorage.setItem('tally_customRequest', configData.request_xml || '');
     }
   };
@@ -206,6 +211,7 @@ const Connector = () => {
     setReportName(config.report_name || '');
     setFileFormat(config.file_format || 'XML');
     setCustomRequest(config.request_xml || '');
+    setDynamicFiltersStr(config.dynamic_filters ? JSON.stringify(config.dynamic_filters, null, 2) : '');
     setIsEditMode(true);
     setConnectionState('connected');
     setSyncStatus(null);
@@ -244,6 +250,17 @@ const Connector = () => {
       };
       await axios.post(`${API_URL}/mysql/config`, mysqlPayload);
 
+      let parsedFilters = null;
+      if (dynamicFiltersStr && dynamicFiltersStr.trim()) {
+        try {
+          parsedFilters = JSON.parse(dynamicFiltersStr);
+        } catch (e) {
+          showToast('error', 'Dynamic Filters must be valid JSON');
+          setIsLoading(false);
+          return;
+        }
+      }
+
       // Save Tally Config
       const payload = {
         connection_name: connectionName,
@@ -252,7 +269,8 @@ const Connector = () => {
         company_name: companyName,
         report_name: reportName,
         file_format: fileFormat,
-        request_xml: customRequest
+        request_xml: customRequest,
+        dynamic_filters: parsedFilters
       };
 
       if (isEditMode) {
@@ -358,6 +376,16 @@ const Connector = () => {
     setIsModalOpen(false);
 
     try {
+      let parsedFilters = null;
+      if (dynamicFiltersStr && dynamicFiltersStr.trim()) {
+        try {
+          parsedFilters = JSON.parse(dynamicFiltersStr);
+        } catch (e) {
+          showToast('error', 'Dynamic Filters must be valid JSON');
+          return;
+        }
+      }
+
       const payload = {
         connection_name: connectionName,
         tally_host: host,
@@ -365,7 +393,8 @@ const Connector = () => {
         company_name: companyName,
         report_name: reportName,
         file_format: fileFormat,
-        request_xml: customRequest
+        request_xml: customRequest,
+        dynamic_filters: parsedFilters
       };
 
       // Save MySQL Config first
@@ -452,7 +481,9 @@ const Connector = () => {
   const getRequestResponseLayout = (isReadOnly, isEditMode) => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', flex: 1, minHeight: '150px', height: isReadOnly ? '300px' : '220px' }}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--accent-color)', marginBottom: '8px' }}>Request:</label>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+          <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--accent-color)' }}>Request XML:</label>
+        </div>
         <textarea
           style={{
             flex: 1,
@@ -462,12 +493,33 @@ const Connector = () => {
             padding: '16px',
             fontFamily: 'monospace',
             color: 'var(--text-primary)',
-            resize: 'none'
+            resize: 'none',
+            minHeight: '180px'
           }}
           value={customRequest}
           readOnly={isReadOnly}
           onChange={e => setCustomRequest(e.target.value)}
         />
+        {!isReadOnly && (
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Dynamic Filters (JSON Format):</label>
+            <textarea
+              style={{
+                backgroundColor: 'var(--bg-panel)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                padding: '12px',
+                fontFamily: 'monospace',
+                color: 'var(--text-primary)',
+                resize: 'vertical',
+                minHeight: '100px'
+              }}
+              value={dynamicFiltersStr}
+              onChange={e => setDynamicFiltersStr(e.target.value)}
+              placeholder='{\n  "FROM_DATE": "2024-04-01",\n  "TO_DATE": "2025-03-31"\n}'
+            />
+          </div>
+        )}
         {!isReadOnly && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
             <div style={{ display: 'flex', gap: '12px' }}>
