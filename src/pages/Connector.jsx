@@ -499,6 +499,7 @@ const Connector = () => {
           value={customRequest}
           readOnly={isReadOnly}
           onChange={e => setCustomRequest(e.target.value)}
+          placeholder={`<ENVELOPE>\n  <HEADER>\n    <VERSION>1</VERSION>\n    <TALLYREQUEST>EXPORT</TALLYREQUEST>\n    <TYPE>DATA</TYPE>\n    <ID>VCHLEVEL</ID>\n  </HEADER>\n  <BODY>\n    <DESC>\n        <STATICVARIABLES>\n            <SVEXPORTFORMAT>XML</SVEXPORTFORMAT>\n            <SVCURRENTCOMPANY>{COMPANY_NAME}</SVCURRENTCOMPANY>\n            <VARALTERID>{LAST_ALTER_ID}</VARALTERID>\n        </STATICVARIABLES>\n    </DESC>\n  </BODY>\n</ENVELOPE>`}
         />
         {!isReadOnly && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
@@ -569,21 +570,21 @@ const Connector = () => {
             setIsEditMode(false);
             setConnectionState('unknown');
             setCustomRequest(`<ENVELOPE>
-    <HEADER>
-        <VERSION>1</VERSION>
-        <TALLYREQUEST>Export</TALLYREQUEST>
-        <TYPE>Data</TYPE>
-        <ID>Test Ledger</ID>
-    </HEADER>
-
-    <BODY>
-        <DESC>
-            <STATICVARIABLES>
-                <SVEXPORTFORMAT>XML</SVEXPORTFORMAT>
-                <SVCURRENTCOMPANY>Test Company</SVCURRENTCOMPANY>
-            </STATICVARIABLES>
-        </DESC>
-    </BODY>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>VCHLEVEL</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+        <STATICVARIABLES>
+            <SVEXPORTFORMAT>XML</SVEXPORTFORMAT>
+            <SVCURRENTCOMPANY>{COMPANY_NAME}</SVCURRENTCOMPANY>
+            <VARALTERID>{LAST_ALTER_ID}</VARALTERID>
+        </STATICVARIABLES>
+    </DESC>
+  </BODY>
 </ENVELOPE>`);
             setResponsePayload('');
             setSyncStatus(null);
