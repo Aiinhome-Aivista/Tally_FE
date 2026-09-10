@@ -479,7 +479,7 @@ const Connector = () => {
   };
 
   const getRequestResponseLayout = (isReadOnly, isEditMode) => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', flex: 1, minHeight: '150px', height: isReadOnly ? '300px' : '220px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', flex: 1, minHeight: '220px', height: 'auto' }}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
           <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--accent-color)' }}>Request XML:</label>
@@ -493,33 +493,13 @@ const Connector = () => {
             padding: '16px',
             fontFamily: 'monospace',
             color: 'var(--text-primary)',
-            resize: 'none',
-            minHeight: '180px'
+            resize: 'vertical',
+            minHeight: '200px'
           }}
           value={customRequest}
           readOnly={isReadOnly}
           onChange={e => setCustomRequest(e.target.value)}
         />
-        {!isReadOnly && (
-          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Dynamic Filters (JSON Format):</label>
-            <textarea
-              style={{
-                backgroundColor: 'var(--bg-panel)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                padding: '12px',
-                fontFamily: 'monospace',
-                color: 'var(--text-primary)',
-                resize: 'vertical',
-                minHeight: '100px'
-              }}
-              value={dynamicFiltersStr}
-              onChange={e => setDynamicFiltersStr(e.target.value)}
-              placeholder='{\n  "FROM_DATE": "2024-04-01",\n  "TO_DATE": "2025-03-31"\n}'
-            />
-          </div>
-        )}
         {!isReadOnly && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
             <div style={{ display: 'flex', gap: '12px' }}>
