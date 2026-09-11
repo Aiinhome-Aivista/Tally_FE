@@ -605,12 +605,14 @@ const Connector = () => {
             let isCopied = false;
             let currentHost = 'localhost';
             let currentPort = 9000;
+            let newCompanyName = '';
             if (allConfigs && allConfigs.length > 0) {
               currentHost = allConfigs[0].tally_host || 'localhost';
               currentPort = allConfigs[0].tally_port || 9000;
+              newCompanyName = allConfigs[0].company_name || '';
               setHost(currentHost);
               setPort(currentPort);
-              setCompanyName(allConfigs[0].company_name || '');
+              setCompanyName(newCompanyName);
               isCopied = true;
             } else {
               setHost('localhost');
@@ -644,10 +646,10 @@ const Connector = () => {
             setSyncProgress(0);
             
             if (baselineMysql && baselineMysql.host) {
-              setMysqlConfig({ ...baselineMysql });
+              setMysqlConfig({ ...baselineMysql, database: generateDbName(newCompanyName) });
               setMysqlConnectionState('connected');
             } else {
-              setMysqlConfig({ host: '', port: '', username: '', password: '', database: generateDbName(companyName) });
+              setMysqlConfig({ host: '', port: '', username: '', password: '', database: generateDbName(newCompanyName) });
               setMysqlConnectionState('unknown');
             }
             
