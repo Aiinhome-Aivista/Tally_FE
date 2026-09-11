@@ -89,8 +89,6 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     fetchConfigs();
   }, [refreshTrigger]);
 
-
-
   const showToast = (type, msg) => {
     setStatus({ type, msg });
     setTimeout(() => {
@@ -202,20 +200,72 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     }
   };
 
+  // --- BEGIN SYNC ALL STATE & FUNCTION ---
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+
+  const handleSyncAll = async () => {
+    if (configs.length === 0) {
+      showToast('error', 'No connections to sync.');
+      return;
+    }
+    
+    setIsSyncingAll(true);
+    showToast('success', 'Starting Sync All...');
+    
+    // Start background sync for all configurations
+    for (const config of configs) {
+      try {
+        await axios.post(`${API_URL}/sync/start`, {
+          connection_name: config.connection_name,
+          tally_host: config.tally_host,
+          tally_port: config.tally_port,
+          request_xml: config.request_xml
+        });
+      } catch (err) {
+        console.error(`Failed to start sync for ${config.connection_name}`, err);
+      }
+      // Small 300ms delay to prevent overwhelming the server
+      await new Promise(r => setTimeout(r, 300));
+    }
+    
+    showToast('success', 'All syncs initiated!');
+    setIsSyncingAll(false);
+    
+    // Refresh table immediately so rows show "In Progress"
+    fetchConfigs(true);
+  };
+  // --- END SYNC ALL STATE & FUNCTION ---
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         {!isEmbedded && <h1 className="page-title" style={{ margin: 0 }}>Connector History</h1>}
         {isEmbedded && <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Configured Connections</h2>}
-        <button
-          className="btn"
-          style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)' }}
-          onClick={() => fetchConfigs()}
-          disabled={isLoading}
-        >
-          <RefreshCw size={18} className={isLoading ? "spin" : ""} />
-          Refresh
-        </button>
+        
+        <div style={{ display: 'flex', gap: '12px' }}>
+          {/* --- BEGIN SYNC ALL BUTTON --- */}
+          <button
+            className="btn btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            onClick={handleSyncAll}
+            disabled={isSyncingAll || isLoading || configs.length === 0}
+            title="Sync all active connections sequentially"
+          >
+            {isSyncingAll ? <Loader2 size={18} className="spin" /> : <Play size={18} />}
+            Sync All
+          </button>
+          {/* --- END SYNC ALL BUTTON --- */}
+
+          <button
+            className="btn"
+            style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}
+            onClick={() => fetchConfigs()}
+            disabled={isLoading}
+          >
+            <RefreshCw size={18} className={isLoading ? "spin" : ""} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>

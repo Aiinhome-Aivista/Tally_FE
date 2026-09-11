@@ -6,6 +6,17 @@ import ConnectorHistory from './ConnectorHistory';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
+// Auto-generate a valid MySQL database name from company name
+const generateDbName = (name) => {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^_|_$/g, '')
+    .substring(0, 64);
+};
+
 const Connector = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -35,6 +46,9 @@ const Connector = () => {
   const [syncStatus, setSyncStatus] = useState(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
+  const [baselineTally, setBaselineTally] = useState(null);
+  const [baselineMysql, setBaselineMysql] = useState(null);
+
   const [showAddOptions, setShowAddOptions] = useState(false);
   const [isMysqlModalOpen, setIsMysqlModalOpen] = useState(false);
   const [mysqlConfig, setMysqlConfig] = useState({
@@ -47,6 +61,14 @@ const Connector = () => {
   const [isMysqlValidating, setIsMysqlValidating] = useState(false);
   const [mysqlConnectionState, setMysqlConnectionState] = useState('unknown');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Auto-generate DB name whenever companyName changes (only if not already saved)
+  useEffect(() => {
+    if (companyName && !baselineMysql) {
+      const autoDb = generateDbName(companyName);
+      setMysqlConfig(prev => ({ ...prev, database: autoDb }));
+    }
+  }, [companyName]);
 
   const showToast = (type, msg) => {
     setStatus({ type, msg });
@@ -72,22 +94,24 @@ const Connector = () => {
     try {
       const res = await axios.get(`${API_URL}/mysql/config`);
       if (res.data) {
-        setMysqlConfig({
+        const configData = {
           host: res.data.host,
           port: res.data.port,
           username: res.data.username,
           password: res.data.password || '',
           database: res.data.database_name
-        });
+        };
+        setMysqlConfig(configData);
+        setBaselineMysql(configData);
 
         // Silently validate the saved configuration
         try {
           const validateRes = await axios.post(`${API_URL}/mysql/validate`, {
-            host: res.data.host,
-            port: Number(res.data.port),
-            username: res.data.username,
-            password: res.data.password || '',
-            database_name: res.data.database_name
+            host: configData.host,
+            port: Number(configData.port),
+            username: configData.username,
+            password: configData.password,
+            database_name: configData.database
           });
           if (validateRes.data && validateRes.data.status === 'SUCCESS') {
             setMysqlConnectionState('connected');
@@ -120,6 +144,7 @@ const Connector = () => {
         setCompanyName(configData.company_name || '');
         setReportName(configData.report_name || '');
         setFileFormat(configData.file_format || 'XML');
+        setBaselineTally({ host: configData.tally_host, port: configData.tally_port });
 
         if (testName || !sessionStorage.getItem('tally_customRequest')) {
           setCustomRequest(configData.request_xml || '');
@@ -142,6 +167,7 @@ const Connector = () => {
         setCompanyName('');
         setReportName('');
         setFileFormat('XML');
+        setBaselineTally(null);
       }
     } catch (err) {
       console.error("Could not fetch config", err);
@@ -309,6 +335,7 @@ const Connector = () => {
       });
       showToast('success', 'Validation Successful!');
       setConnectionState('connected');
+      setBaselineTally({ host, port });
     } catch (err) {
       showToast('error', 'Validation Failed!');
       setConnectionState('disconnected');
@@ -340,6 +367,7 @@ const Connector = () => {
       if (res.data && res.data.status === 'SUCCESS') {
         showToast('success', 'MySQL Validation Successful!');
         setMysqlConnectionState('connected');
+        setBaselineMysql({ ...mysqlConfig, port: Number(mysqlConfig.port) });
       }
     } catch (err) {
       showToast('error', err.response?.data?.detail || 'MySQL Validation Failed!');
@@ -548,6 +576,23 @@ const Connector = () => {
     </div>
   );
 
+  const handleMysqlChange = (field, value) => {
+    const updated = { ...mysqlConfig, [field]: value };
+    setMysqlConfig(updated);
+    if (
+      baselineMysql &&
+      updated.host === baselineMysql.host &&
+      Number(updated.port) === Number(baselineMysql.port) &&
+      updated.username === baselineMysql.username &&
+      updated.database === baselineMysql.database &&
+      updated.password === baselineMysql.password
+    ) {
+      setMysqlConnectionState('connected');
+    } else {
+      setMysqlConnectionState('unknown');
+    }
+  };
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', paddingBottom: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
@@ -557,10 +602,16 @@ const Connector = () => {
         <div style={{ position: 'relative' }}>
           <button className="btn btn-primary" onClick={() => {
             setConnectionName('');
+            let isCopied = false;
+            let currentHost = 'localhost';
+            let currentPort = 9000;
             if (allConfigs && allConfigs.length > 0) {
-              setHost(allConfigs[0].tally_host || 'localhost');
-              setPort(allConfigs[0].tally_port || 9000);
+              currentHost = allConfigs[0].tally_host || 'localhost';
+              currentPort = allConfigs[0].tally_port || 9000;
+              setHost(currentHost);
+              setPort(currentPort);
               setCompanyName(allConfigs[0].company_name || '');
+              isCopied = true;
             } else {
               setHost('localhost');
               setPort(9000);
@@ -569,7 +620,8 @@ const Connector = () => {
             setReportName('');
             setFileFormat('XML');
             setIsEditMode(false);
-            setConnectionState('unknown');
+            setBaselineTally(isCopied ? { host: currentHost, port: currentPort } : null);
+            setConnectionState(isCopied ? 'connected' : 'unknown');
             setCustomRequest(`<ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
@@ -590,8 +642,15 @@ const Connector = () => {
             setResponsePayload('');
             setSyncStatus(null);
             setSyncProgress(0);
-            setMysqlConfig({ host: '', port: '', username: '', password: '', database: '' });
-            setMysqlConnectionState('unknown');
+            
+            if (baselineMysql && baselineMysql.host) {
+              setMysqlConfig({ ...baselineMysql });
+              setMysqlConnectionState('connected');
+            } else {
+              setMysqlConfig({ host: '', port: '', username: '', password: '', database: generateDbName(companyName) });
+              setMysqlConnectionState('unknown');
+            }
+            
             setIsModalOpen(true);
           }}>
             Add Connector
@@ -677,8 +736,13 @@ const Connector = () => {
                       className="form-input"
                       value={host}
                       onChange={e => {
-                        setHost(e.target.value);
-                        setConnectionState('unknown');
+                        const newHost = e.target.value;
+                        setHost(newHost);
+                        if (baselineTally && newHost === baselineTally.host && Number(port) === Number(baselineTally.port)) {
+                          setConnectionState('connected');
+                        } else {
+                          setConnectionState('unknown');
+                        }
                       }}
                       style={{ height: '44px', backgroundColor: 'var(--bg-panel)' }}
                       placeholder="localhost"
@@ -691,8 +755,13 @@ const Connector = () => {
                       className="form-input"
                       value={port}
                       onChange={e => {
-                        setPort(e.target.value === '' ? '' : Number(e.target.value));
-                        setConnectionState('unknown');
+                        const newPort = e.target.value === '' ? '' : Number(e.target.value);
+                        setPort(newPort);
+                        if (baselineTally && host === baselineTally.host && Number(newPort) === Number(baselineTally.port)) {
+                          setConnectionState('connected');
+                        } else {
+                          setConnectionState('unknown');
+                        }
                       }}
                       style={{ height: '44px', backgroundColor: 'var(--bg-panel)' }}
                       placeholder="9000"
@@ -759,10 +828,7 @@ const Connector = () => {
                       type="text"
                       className="form-input"
                       value={mysqlConfig.host}
-                      onChange={e => {
-                        setMysqlConfig({ ...mysqlConfig, host: e.target.value });
-                        setMysqlConnectionState('unknown');
-                      }}
+                      onChange={e => handleMysqlChange('host', e.target.value)}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
                       placeholder="e.g. 127.0.0.1"
                     />
@@ -773,10 +839,7 @@ const Connector = () => {
                       type="number"
                       className="form-input"
                       value={mysqlConfig.port}
-                      onChange={e => {
-                        setMysqlConfig({ ...mysqlConfig, port: e.target.value === '' ? '' : Number(e.target.value) });
-                        setMysqlConnectionState('unknown');
-                      }}
+                      onChange={e => handleMysqlChange('port', e.target.value === '' ? '' : Number(e.target.value))}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
                       placeholder="3306"
                     />
@@ -788,10 +851,7 @@ const Connector = () => {
                       type="text"
                       className="form-input"
                       value={mysqlConfig.username}
-                      onChange={e => {
-                        setMysqlConfig({ ...mysqlConfig, username: e.target.value });
-                        setMysqlConnectionState('unknown');
-                      }}
+                      onChange={e => handleMysqlChange('username', e.target.value)}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
                       placeholder="Enter username"
                     />
@@ -804,48 +864,39 @@ const Connector = () => {
                         type={showPassword ? "text" : "password"}
                         className="form-input"
                         value={mysqlConfig.password}
-                        onChange={e => {
-                          setMysqlConfig({ ...mysqlConfig, password: e.target.value });
-                          setMysqlConnectionState('unknown');
-                        }}
+                        onChange={e => handleMysqlChange('password', e.target.value)}
                         style={{ backgroundColor: 'var(--bg-panel)', paddingRight: '40px' }}
                         placeholder="Enter password"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        style={{
-                          position: 'absolute',
-                          right: '12px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          padding: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
+                        style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
                       >
-                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Database Name</label>
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      Database Name
+                      <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '4px', padding: '1px 6px' }}>
+                        🔒 Auto-generated
+                      </span>
+                    </label>
                     <input
                       type="text"
                       className="form-input"
                       value={mysqlConfig.database}
-                      onChange={e => {
-                        setMysqlConfig({ ...mysqlConfig, database: e.target.value });
-                        setMysqlConnectionState('unknown');
+                      readOnly
+                      style={{
+                        backgroundColor: 'var(--bg-secondary)',
+                        cursor: 'not-allowed',
+                        opacity: 0.85,
+                        userSelect: 'all'
                       }}
-                      style={{ backgroundColor: 'var(--bg-panel)' }}
-                      placeholder="e.g. my_database"
+                      placeholder="Database name goes here..."
                     />
                   </div>
 
