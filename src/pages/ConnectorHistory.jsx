@@ -278,6 +278,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                 <th>Port</th>
                 <th>Company Name</th>
                 <th>Report Name</th>
+                <th>Database Name</th>
                 <th>Status</th>
                 <th>Rows Processed</th>
                 <th>Scheduler</th>
@@ -291,7 +292,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
             <tbody>
               {configs.length === 0 ? (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
+                  <td colSpan="12" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
                     <Database size={48} style={{ opacity: 0.5, marginBottom: '16px', display: 'inline-block' }} />
                     <p style={{ margin: 0 }}>No active connections found.</p>
                   </td>
@@ -304,6 +305,9 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                     <td>{config.tally_port}</td>
                     <td>{config.company_name || 'N/A'}</td>
                     <td>{config.report_name || 'N/A'}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--accent-color)' }}>
+                      {config.database_name || 'N/A'}
+                    </td>
                     <td>
                       {isLoading ? (
                         <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>
