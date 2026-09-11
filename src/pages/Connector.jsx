@@ -602,11 +602,10 @@ const Connector = () => {
         <div style={{ position: 'relative' }}>
           <button className="btn btn-primary" onClick={() => {
             setConnectionName('');
-            let isCopied = false;
-            let currentHost = 'localhost';
-            let currentPort = 9000;
             let newCompanyName = '';
+            
             if (allConfigs && allConfigs.length > 0) {
+              // Existing connections: Retain everything
               currentHost = allConfigs[0].tally_host || 'localhost';
               currentPort = allConfigs[0].tally_port || 9000;
               newCompanyName = allConfigs[0].company_name || '';
@@ -614,11 +613,23 @@ const Connector = () => {
               setPort(currentPort);
               setCompanyName(newCompanyName);
               isCopied = true;
+              
+              if (baselineMysql && baselineMysql.host) {
+                setMysqlConfig({ ...baselineMysql });
+                setMysqlConnectionState('connected');
+              } else {
+                setMysqlConfig({ host: '', port: '', username: '', password: '', database: generateDbName(newCompanyName) });
+                setMysqlConnectionState('unknown');
+              }
             } else {
+              // No existing connections: Completely fresh
               setHost('localhost');
               setPort(9000);
               setCompanyName('');
+              setMysqlConfig({ host: '', port: '', username: '', password: '', database: '' });
+              setMysqlConnectionState('unknown');
             }
+            
             setReportName('');
             setFileFormat('XML');
             setIsEditMode(false);
@@ -644,14 +655,6 @@ const Connector = () => {
             setResponsePayload('');
             setSyncStatus(null);
             setSyncProgress(0);
-            
-            if (baselineMysql && baselineMysql.host) {
-              setMysqlConfig({ ...baselineMysql, database: generateDbName(newCompanyName) });
-              setMysqlConnectionState('connected');
-            } else {
-              setMysqlConfig({ host: '', port: '', username: '', password: '', database: generateDbName(newCompanyName) });
-              setMysqlConnectionState('unknown');
-            }
             
             setIsModalOpen(true);
           }}>
