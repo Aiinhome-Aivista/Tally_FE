@@ -65,6 +65,7 @@ const Connector = () => {
     sessionStorage.removeItem('tally_customRequest');
     sessionStorage.removeItem('tally_responsePayload');
     fetchConfig();
+    fetchMysqlConfig();
   }, []);
 
   const fetchMysqlConfig = async () => {
