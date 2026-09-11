@@ -602,6 +602,9 @@ const Connector = () => {
         <div style={{ position: 'relative' }}>
           <button className="btn btn-primary" onClick={() => {
             setConnectionName('');
+            let isCopied = false;
+            let currentHost = 'localhost';
+            let currentPort = 9000;
             let newCompanyName = '';
             
             if (allConfigs && allConfigs.length > 0) {
