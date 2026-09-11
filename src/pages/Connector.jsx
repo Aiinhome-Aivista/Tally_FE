@@ -62,13 +62,13 @@ const Connector = () => {
   const [mysqlConnectionState, setMysqlConnectionState] = useState('unknown');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Auto-generate DB name whenever companyName changes (only if not already saved)
+  // Auto-generate DB name whenever companyName changes
   useEffect(() => {
-    if (companyName && !baselineMysql) {
+    if (companyName && !isEditMode) {
       const autoDb = generateDbName(companyName);
       setMysqlConfig(prev => ({ ...prev, database: autoDb }));
     }
-  }, [companyName]);
+  }, [companyName, isEditMode]);
 
   const showToast = (type, msg) => {
     setStatus({ type, msg });
