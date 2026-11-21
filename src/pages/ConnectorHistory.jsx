@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Eye, Play, Database, RefreshCw, XCircle, CheckCircle, Trash2, Edit2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const CustomSpinner = ({ size = 18, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -38,6 +38,26 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
   const [editRequestXml, setEditRequestXml] = useState('');
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
   const [isLogsLoading, setIsLogsLoading] = useState(false);
+  const [togglingScheduler, setTogglingScheduler] = useState({});
+
+  const handleToggleScheduler = async (config, newTiming) => {
+    const connName = config.connection_name;
+    setTogglingScheduler(prev => ({ ...prev, [connName]: true }));
+    try {
+      const res = await axios.post(`${API_URL}/config/${connName}/toggle-scheduler`, {
+        scheduler_timing: newTiming
+      });
+      const updatedTiming = res.data.scheduler_timing || '';
+      setConfigs(prev => prev.map(c => c.connection_name === connName ? { ...c, scheduler_timing: updatedTiming } : c));
+      const isActive = Boolean(updatedTiming && !['inactive', 'off', '0', 'none'].includes(updatedTiming.trim().toLowerCase()));
+      showToast('success', isActive ? `Auto Sync Activated (${updatedTiming}m)` : `Auto Sync Deactivated`);
+    } catch (err) {
+      console.error('Failed to toggle scheduler', err);
+      showToast('error', 'Failed to update scheduler');
+    } finally {
+      setTogglingScheduler(prev => ({ ...prev, [connName]: false }));
+    }
+  };
 
   const fetchConfigs = async (silent = false) => {
     if (!silent) setIsLoading(true);
@@ -48,7 +68,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
         const configuredList = await Promise.all(res.data.map(async (cfg, idx) => {
           let lastSync = 'Never';
           let syncStatus = 'N/A';
-          let rowsProcessed = 0;
+          let rowsProcessed = (cfg.total_rows !== undefined && cfg.total_rows !== null) ? cfg.total_rows : 0;
           
           try {
             const logsRes = await axios.get(`${API_URL}/logs?connection_name=${cfg.connection_name}&limit=1`);
@@ -60,7 +80,9 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                 hour: '2-digit', minute: '2-digit'
               }).format(date);
               syncStatus = latestLog.status;
-              rowsProcessed = latestLog.records_fetched || 0;
+              if (rowsProcessed === 0 && latestLog.records_fetched) {
+                rowsProcessed = latestLog.records_fetched;
+              }
             }
           } catch (e) {
             console.error("Failed to fetch logs for", cfg.connection_name, e);
@@ -87,6 +109,13 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
 
   useEffect(() => {
     fetchConfigs();
+    
+    // Auto-refresh table silently every 10 seconds so background sync results update automatically
+    const interval = setInterval(() => {
+      fetchConfigs(true);
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, [refreshTrigger]);
 
   const showToast = (type, msg) => {
@@ -333,9 +362,20 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                       )}
                     </td>
                     <td>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--success)', fontWeight: 600, fontSize: '0.8rem', padding: '4px 10px', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '20px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                        <span className="blink-dot" style={{ backgroundColor: 'var(--success)' }}></span> Active
-                      </div>
+                      {(() => {
+                        const timing = (config.scheduler_timing || '').trim().toLowerCase();
+                        const isActive = Boolean(timing && !['inactive', 'off', '0', 'none', ''].includes(timing));
+
+                        return isActive ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--success)', fontWeight: 600, fontSize: '0.8rem', padding: '4px 10px', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '20px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                            <span className="blink-dot" style={{ backgroundColor: 'var(--success)' }}></span> Active
+                          </div>
+                        ) : (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontWeight: 600, fontSize: '0.8rem', padding: '4px 10px', backgroundColor: 'rgba(156, 163, 175, 0.1)', borderRadius: '20px', border: '1px solid rgba(156, 163, 175, 0.2)' }}>
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--text-secondary)' }}></span> Inactive
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{config.last_sync}</td>
                     <td>
@@ -496,27 +536,74 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
       {/* Delete Confirmation Modal */}
       {deleteModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '400px', textAlign: 'center', padding: '32px 24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-              <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '16px', borderRadius: '50%' }}>
-                <Trash2 size={48} color="var(--danger)" />
+          <div className="modal-content" style={{ maxWidth: '420px', textAlign: 'center', padding: '32px 28px', borderRadius: '16px', boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+              <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '16px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Trash2 size={40} color="var(--danger)" />
               </div>
             </div>
-            <h2 style={{ fontSize: '1.25rem', marginBottom: '8px', color: 'var(--text-primary)' }}>Delete Connection?</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.95rem', lineHeight: '1.5' }}>
-              Are you sure you want to delete the connection <strong>"{connectionToDelete}"</strong>? This will permanently stop the sync for this configuration.
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '10px', color: 'var(--text-primary)' }}>Delete Connection?</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '28px', fontSize: '0.925rem', lineHeight: '1.5' }}>
+              Are you sure you want to delete the connection <strong style={{ color: 'var(--text-primary)' }}>"{connectionToDelete}"</strong>? This will permanently stop the sync for this configuration.
             </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
               <button
+                type="button"
                 className="btn"
-                style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '10px 24px', flex: 1 }}
+                style={{
+                  flex: 1,
+                  height: '42px',
+                  padding: '0 20px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-primary)',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '0.925rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                }}
                 onClick={() => setDeleteModalOpen(false)}
               >
                 Cancel
               </button>
               <button
+                type="button"
                 className="btn"
-                style={{ backgroundColor: 'var(--danger)', color: 'white', padding: '10px 24px', flex: 1 }}
+                style={{
+                  flex: 1,
+                  height: '42px',
+                  padding: '0 20px',
+                  backgroundColor: 'var(--danger)',
+                  border: '1px solid var(--danger)',
+                  color: '#ffffff',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '0.925rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(239, 68, 68, 0.25)',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.filter = 'brightness(1.1)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.filter = 'none';
+                  e.currentTarget.style.transform = 'none';
+                }}
                 onClick={confirmDelete}
               >
                 Delete

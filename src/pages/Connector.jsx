@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { Plug, Save, CheckCircle, XCircle, Trash2, Database, Server, Settings, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Plug, Save, CheckCircle, XCircle, Trash2, Database, Server, Settings, Loader2, Eye, EyeOff, Clock } from 'lucide-react';
 import ConnectorHistory from './ConnectorHistory';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Auto-generate a valid MySQL database name from company name
 const generateDbName = (name) => {
@@ -61,12 +61,60 @@ const Connector = () => {
   const [isMysqlValidating, setIsMysqlValidating] = useState(false);
   const [mysqlConnectionState, setMysqlConnectionState] = useState('unknown');
   const [showPassword, setShowPassword] = useState(false);
+  const [isSchedulerActive, setIsSchedulerActive] = useState(false);
+  const [schedulerInterval, setSchedulerInterval] = useState('5');
+
+  const isMysqlConfigMatchingExisting = (cfg) => {
+    // Automatic validation is ONLY for 2nd time connector onwards (when at least one connection exists in allConfigs)
+    if (!cfg || !cfg.database || !Array.isArray(allConfigs) || allConfigs.length === 0) {
+      return false;
+    }
+    
+    if (!baselineMysql || !baselineMysql.host) {
+      return false;
+    }
+
+    const hostMatch = String(cfg.host || '').trim() === String(baselineMysql.host || '').trim();
+    const portMatch = Number(cfg.port || 0) === Number(baselineMysql.port || 0);
+    const userMatch = String(cfg.username || '').trim() === String(baselineMysql.username || '').trim();
+    const passMatch = String(cfg.password || '') === String(baselineMysql.password || '');
+
+    if (!hostMatch || !portMatch || !userMatch || !passMatch) {
+      return false;
+    }
+
+    // Check if baseline database matches
+    if (baselineMysql.database && String(cfg.database).trim().toLowerCase() === String(baselineMysql.database).trim().toLowerCase()) {
+      return true;
+    }
+
+    // Check if any existing connection in allConfigs used this database
+    const hasSameDbInConfigs = allConfigs.some(c => {
+      const cDb = c.database_name || generateDbName(c.company_name || '');
+      return String(cDb).trim().toLowerCase() === String(cfg.database).trim().toLowerCase();
+    });
+
+    return hasSameDbInConfigs;
+  };
 
   // Auto-generate DB name whenever companyName changes
   useEffect(() => {
-    if (companyName && !isEditMode) {
-      const autoDb = generateDbName(companyName);
-      setMysqlConfig(prev => ({ ...prev, database: autoDb }));
+    if (!isEditMode) {
+      if (companyName) {
+        const autoDb = generateDbName(companyName);
+        setMysqlConfig(prev => {
+          const updated = { ...prev, database: autoDb };
+          if (isMysqlConfigMatchingExisting(updated)) {
+            setMysqlConnectionState('connected');
+          } else {
+            setMysqlConnectionState('unknown');
+          }
+          return updated;
+        });
+      } else {
+        setMysqlConfig(prev => ({ ...prev, database: '' }));
+        setMysqlConnectionState('unknown');
+      }
     }
   }, [companyName, isEditMode]);
 
@@ -95,30 +143,13 @@ const Connector = () => {
       const res = await axios.get(`${API_URL}/mysql/config`);
       if (res.data) {
         const configData = {
-          host: res.data.host,
-          port: res.data.port,
-          username: res.data.username,
+          host: res.data.host || '',
+          port: res.data.port || '',
+          username: res.data.username || '',
           password: res.data.password || '',
-          database: res.data.database_name
+          database: res.data.database_name || ''
         };
-        setMysqlConfig(configData);
         setBaselineMysql(configData);
-
-        // Silently validate the saved configuration
-        try {
-          const validateRes = await axios.post(`${API_URL}/mysql/validate`, {
-            host: configData.host,
-            port: Number(configData.port),
-            username: configData.username,
-            password: configData.password,
-            database_name: configData.database
-          });
-          if (validateRes.data && validateRes.data.status === 'SUCCESS') {
-            setMysqlConnectionState('connected');
-          }
-        } catch (e) {
-          setMysqlConnectionState('disconnected');
-        }
       }
     } catch (err) {
       console.error("Could not fetch MySQL config", err);
@@ -239,11 +270,26 @@ const Connector = () => {
     setFileFormat(config.file_format || 'XML');
     setCustomRequest(config.request_xml || '');
     setDynamicFiltersStr(config.dynamic_filters ? JSON.stringify(config.dynamic_filters, null, 2) : '');
+    const timing = (config.scheduler_timing || '').trim().toLowerCase();
+    const isAct = Boolean(timing && !['inactive', 'off', '0', 'none', ''].includes(timing));
+    setIsSchedulerActive(isAct);
+    setSchedulerInterval(isAct && timing.match(/^\d+$/) ? timing : '5');
     setIsEditMode(true);
     setConnectionState('connected');
+    setBaselineTally({ host: config.tally_host, port: config.tally_port });
+
+    if (baselineMysql && baselineMysql.host) {
+      setMysqlConfig({
+        ...baselineMysql,
+        database: config.database_name || generateDbName(config.company_name || '') || baselineMysql.database
+      });
+      setMysqlConnectionState('connected');
+    } else {
+      setMysqlConnectionState('connected');
+    }
+
     setSyncStatus(null);
     setSyncProgress(0);
-    setResponsePayload('');
     setIsModalOpen(true);
   };
 
@@ -297,6 +343,7 @@ const Connector = () => {
         report_name: reportName,
         file_format: fileFormat,
         request_xml: customRequest,
+        scheduler_timing: isSchedulerActive ? schedulerInterval : 'inactive',
         dynamic_filters: parsedFilters
       };
 
@@ -337,7 +384,7 @@ const Connector = () => {
       setConnectionState('connected');
       setBaselineTally({ host, port });
     } catch (err) {
-      showToast('error', 'Validation Failed!');
+      showToast('error', err.response?.data?.detail || 'Validation Failed!');
       setConnectionState('disconnected');
     } finally {
       setIsValidating(false);
@@ -365,7 +412,7 @@ const Connector = () => {
 
       const res = await axios.post(`${API_URL}/mysql/validate`, payload);
       if (res.data && res.data.status === 'SUCCESS') {
-        showToast('success', 'MySQL Validation Successful!');
+        showToast('success', 'Database Validated Successfully!');
         setMysqlConnectionState('connected');
         setBaselineMysql({ ...mysqlConfig, port: Number(mysqlConfig.port) });
       }
@@ -423,6 +470,7 @@ const Connector = () => {
         report_name: reportName,
         file_format: fileFormat,
         request_xml: customRequest,
+        scheduler_timing: isSchedulerActive ? schedulerInterval : 'inactive',
         dynamic_filters: parsedFilters
       };
 
@@ -569,7 +617,7 @@ const Connector = () => {
               resize: 'none'
             }}
             readOnly
-            value={responsePayload}
+            value={isReadOnly ? responsePayload : ''}
           />
         </div>
       </div>
@@ -579,14 +627,7 @@ const Connector = () => {
   const handleMysqlChange = (field, value) => {
     const updated = { ...mysqlConfig, [field]: value };
     setMysqlConfig(updated);
-    if (
-      baselineMysql &&
-      updated.host === baselineMysql.host &&
-      Number(updated.port) === Number(baselineMysql.port) &&
-      updated.username === baselineMysql.username &&
-      updated.database === baselineMysql.database &&
-      updated.password === baselineMysql.password
-    ) {
+    if (isMysqlConfigMatchingExisting(updated)) {
       setMysqlConnectionState('connected');
     } else {
       setMysqlConnectionState('unknown');
@@ -602,40 +643,41 @@ const Connector = () => {
         <div style={{ position: 'relative' }}>
           <button className="btn btn-primary" onClick={() => {
             setConnectionName('');
-            let isCopied = false;
+            setCompanyName('');
+            setReportName('');
+            setFileFormat('XML');
+            setIsSchedulerActive(false);
+            setSchedulerInterval('5');
+            setIsEditMode(false);
+
             let currentHost = 'localhost';
             let currentPort = 9000;
-            let newCompanyName = '';
+            let isCopied = false;
             
             if (allConfigs && allConfigs.length > 0) {
-              // Existing connections: Retain everything
+              // 2nd time onwards: retain Tally Host/Port & MySQL credentials
               currentHost = allConfigs[0].tally_host || 'localhost';
               currentPort = allConfigs[0].tally_port || 9000;
-              newCompanyName = allConfigs[0].company_name || '';
-              setHost(currentHost);
-              setPort(currentPort);
-              setCompanyName(newCompanyName);
               isCopied = true;
-              
+
               if (baselineMysql && baselineMysql.host) {
-                setMysqlConfig({ ...baselineMysql });
-                setMysqlConnectionState('connected');
+                setMysqlConfig({
+                  ...baselineMysql,
+                  database: ''
+                });
+                setMysqlConnectionState('unknown');
               } else {
-                setMysqlConfig({ host: '', port: '', username: '', password: '', database: generateDbName(newCompanyName) });
+                setMysqlConfig({ host: '', port: '', username: '', password: '', database: '' });
                 setMysqlConnectionState('unknown');
               }
             } else {
-              // No existing connections: Completely fresh
-              setHost('localhost');
-              setPort(9000);
-              setCompanyName('');
+              // 1st time: Tally defaults (localhost:9000), but MySQL is completely blank
               setMysqlConfig({ host: '', port: '', username: '', password: '', database: '' });
               setMysqlConnectionState('unknown');
             }
             
-            setReportName('');
-            setFileFormat('XML');
-            setIsEditMode(false);
+            setHost(currentHost);
+            setPort(currentPort);
             setBaselineTally(isCopied ? { host: currentHost, port: currentPort } : null);
             setConnectionState(isCopied ? 'connected' : 'unknown');
             setCustomRequest(`<ENVELOPE>
@@ -655,7 +697,6 @@ const Connector = () => {
     </DESC>
   </BODY>
 </ENVELOPE>`);
-            setResponsePayload('');
             setSyncStatus(null);
             setSyncProgress(0);
             
@@ -721,7 +762,7 @@ const Connector = () => {
             </div>
 
             {/* Scrollable Body */}
-            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+            <div style={{ padding: '24px 24px 20px 24px', overflowY: 'auto', flex: 1 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Connection Name <span style={{ color: 'var(--danger)' }}>*</span></label>
@@ -811,14 +852,116 @@ const Connector = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Company Name</label>
-                    <input className="form-input" value={companyName} onChange={e => setCompanyName(e.target.value)} style={{ backgroundColor: 'var(--bg-panel)' }} placeholder="e.g. Acme Corp" />
+                    <input className="form-input" value={companyName} onChange={e => setCompanyName(e.target.value)} style={{ backgroundColor: 'var(--bg-panel)', height: '44px' }} placeholder="e.g. Acme Corp" />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Report Name</label>
-                    <input className="form-input" value={reportName} onChange={e => setReportName(e.target.value)} style={{ backgroundColor: 'var(--bg-panel)' }} placeholder="e.g. Trial Balance" />
+                    <input className="form-input" value={reportName} onChange={e => setReportName(e.target.value)} style={{ backgroundColor: 'var(--bg-panel)', height: '44px' }} placeholder="e.g. Trial Balance" />
+                  </div>
+
+                  {/* Auto Sync Scheduler inline */}
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={15} style={{ color: isSchedulerActive ? 'var(--success)' : 'var(--text-secondary)' }} />
+                        Auto Sync Scheduler
+                      </label>
+                      {isSchedulerActive && (
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span className="blink-dot" style={{ backgroundColor: 'var(--success)', width: '6px', height: '6px' }}></span>
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      height: '44px',
+                      backgroundColor: 'var(--bg-panel)',
+                      border: isSchedulerActive ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      padding: '4px 8px',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      {/* Animated Toggle Switch */}
+                      <div
+                        role="switch"
+                        aria-checked={isSchedulerActive}
+                        tabIndex={0}
+                        onClick={() => setIsSchedulerActive(!isSchedulerActive)}
+                        onKeyDown={(e) => {
+                          if (e.key === ' ' || e.key === 'Enter') {
+                            e.preventDefault();
+                            setIsSchedulerActive(!isSchedulerActive);
+                          }
+                        }}
+                        style={{
+                          width: '42px',
+                          height: '24px',
+                          backgroundColor: isSchedulerActive ? 'var(--success)' : 'rgba(156, 163, 175, 0.25)',
+                          borderRadius: '24px',
+                          padding: '2px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          transition: 'all 0.25s ease',
+                          flexShrink: 0,
+                          border: isSchedulerActive ? '1px solid rgba(16, 185, 129, 0.6)' : '1px solid rgba(156, 163, 175, 0.4)',
+                          boxShadow: isSchedulerActive ? '0 0 8px rgba(16, 185, 129, 0.35)' : 'none',
+                          outline: 'none'
+                        }}
+                        title={isSchedulerActive ? 'Click to Turn OFF Auto Sync' : 'Click to Turn ON Auto Sync'}
+                      >
+                        <div
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            backgroundColor: '#ffffff',
+                            borderRadius: '50%',
+                            transform: isSchedulerActive ? 'translateX(18px)' : 'translateX(0px)',
+                            transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isSchedulerActive ? 'var(--success)' : 'var(--text-secondary)', minWidth: '32px' }}>
+                        {isSchedulerActive ? 'ON' : 'OFF'}
+                      </span>
+
+                      {isSchedulerActive ? (
+                        <select
+                          value={schedulerInterval}
+                          onChange={e => setSchedulerInterval(e.target.value)}
+                          className="form-input"
+                          style={{
+                            flex: 1,
+                            height: '34px',
+                            padding: '0 6px',
+                            fontSize: '0.825rem',
+                            backgroundColor: 'var(--bg-secondary)',
+                            color: 'var(--text-primary)',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(255, 255, 255, 0.1)'
+                          }}
+                          title="Sync Interval"
+                        >
+                          <option value="5" style={{ color: '#000', backgroundColor: '#fff' }}>every 5 mins</option>
+                          <option value="15" style={{ color: '#000', backgroundColor: '#fff' }}>every 15 mins</option>
+                          <option value="30" style={{ color: '#000', backgroundColor: '#fff' }}>every 30 mins</option>
+                          <option value="60" style={{ color: '#000', backgroundColor: '#fff' }}>every 1 hour</option>
+                        </select>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic', paddingLeft: '4px' }}>
+                          Manual sync only
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -827,7 +970,7 @@ const Connector = () => {
                 {getRequestResponseLayout(false, isEditMode)}
               </div>
 
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginBottom: '16px' }}>
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginBottom: '20px' }}>
                 <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem' }}>Target Database Configuration</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -913,7 +1056,7 @@ const Connector = () => {
                       type="button"
                       className="btn btn-primary"
                       onClick={handleValidateMysqlConnection}
-                      disabled={isMysqlValidating || mysqlConnectionState === 'connected'}
+                      disabled={isMysqlValidating || (mysqlConnectionState === 'connected' && Boolean(mysqlConfig.database))}
                       style={{
                         width: '100%',
                         height: '44px',
@@ -921,13 +1064,13 @@ const Connector = () => {
                         gap: '8px',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: mysqlConnectionState === 'connected' ? 'var(--success)' : '',
-                        borderColor: mysqlConnectionState === 'connected' ? 'var(--success)' : ''
+                        backgroundColor: (mysqlConnectionState === 'connected' && Boolean(mysqlConfig.database)) ? 'var(--success)' : '',
+                        borderColor: (mysqlConnectionState === 'connected' && Boolean(mysqlConfig.database)) ? 'var(--success)' : ''
                       }}
                     >
                       {isMysqlValidating && <Loader2 size={16} className="spin" />}
-                      {!isMysqlValidating && mysqlConnectionState === 'connected' && <CheckCircle size={16} />}
-                      {isMysqlValidating ? 'Validating...' : (mysqlConnectionState === 'connected' ? 'Database Validated' : 'Validate Database ↗')}
+                      {!isMysqlValidating && (mysqlConnectionState === 'connected' && Boolean(mysqlConfig.database)) && <CheckCircle size={16} />}
+                      {isMysqlValidating ? 'Validating...' : ((mysqlConnectionState === 'connected' && Boolean(mysqlConfig.database)) ? 'Database Validated' : 'Validate Database ↗')}
                     </button>
                   </div>
                 </div>
