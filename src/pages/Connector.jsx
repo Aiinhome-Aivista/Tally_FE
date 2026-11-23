@@ -308,8 +308,9 @@ const Connector = () => {
       return;
     }
 
-    if (!mysqlConfig.host || !mysqlConfig.username || !mysqlConfig.database) {
-      showToast('error', 'Database Host, Username, and Database are required');
+    const isSqlServer = mysqlConfig.db_type === 'sqlserver';
+    if (!mysqlConfig.host || !mysqlConfig.database || (!isSqlServer && !mysqlConfig.username)) {
+      showToast('error', isSqlServer ? 'Host and Database Name are required' : 'Database Host, Username, and Database are required');
       return;
     }
 
@@ -320,9 +321,9 @@ const Connector = () => {
       const mysqlPayload = {
         db_type: mysqlConfig.db_type || 'mysql',
         host: mysqlConfig.host,
-        port: Number(mysqlConfig.port),
-        username: mysqlConfig.username,
-        password: mysqlConfig.password,
+        port: mysqlConfig.port ? Number(mysqlConfig.port) : (isSqlServer ? 1433 : 3306),
+        username: mysqlConfig.username || '',
+        password: mysqlConfig.password || '',
         database_name: mysqlConfig.database
       };
       await axios.post(`${API_URL}/mysql/config`, mysqlPayload);
@@ -397,8 +398,9 @@ const Connector = () => {
   };
 
   const handleValidateMysqlConnection = async () => {
-    if (!mysqlConfig.host || !mysqlConfig.username || !mysqlConfig.database) {
-      showToast('error', 'Host, Username, and Database are required');
+    const isSqlServer = mysqlConfig.db_type === 'sqlserver';
+    if (!mysqlConfig.host || !mysqlConfig.database || (!isSqlServer && !mysqlConfig.username)) {
+      showToast('error', isSqlServer ? 'Host and Database Name are required' : 'Host, Username, and Database are required');
       return;
     }
 
@@ -410,9 +412,9 @@ const Connector = () => {
       const payload = {
         db_type: mysqlConfig.db_type || 'mysql',
         host: mysqlConfig.host,
-        port: Number(mysqlConfig.port),
-        username: mysqlConfig.username,
-        password: mysqlConfig.password,
+        port: mysqlConfig.port ? Number(mysqlConfig.port) : (isSqlServer ? 1433 : 3306),
+        username: mysqlConfig.username || '',
+        password: mysqlConfig.password || '',
         database_name: mysqlConfig.database
       };
 
@@ -420,7 +422,7 @@ const Connector = () => {
       if (res.data && res.data.status === 'SUCCESS') {
         showToast('success', res.data.message || 'Database Validated Successfully!');
         setMysqlConnectionState('connected');
-        setBaselineMysql({ ...mysqlConfig, port: Number(mysqlConfig.port) });
+        setBaselineMysql({ ...mysqlConfig, port: mysqlConfig.port ? Number(mysqlConfig.port) : (isSqlServer ? 1433 : 3306) });
       }
     } catch (err) {
       showToast('error', err.response?.data?.detail || 'Database Validation Failed!');
@@ -431,8 +433,9 @@ const Connector = () => {
   };
 
   const handleSaveMysqlConnection = async () => {
-    if (!mysqlConfig.host || !mysqlConfig.username || !mysqlConfig.database) {
-      showToast('error', 'Host, Username, and Database are required');
+    const isSqlServer = mysqlConfig.db_type === 'sqlserver';
+    if (!mysqlConfig.host || !mysqlConfig.database || (!isSqlServer && !mysqlConfig.username)) {
+      showToast('error', isSqlServer ? 'Host and Database Name are required' : 'Host, Username, and Database are required');
       return;
     }
 
@@ -440,9 +443,9 @@ const Connector = () => {
       const payload = {
         db_type: mysqlConfig.db_type || 'mysql',
         host: mysqlConfig.host,
-        port: Number(mysqlConfig.port),
-        username: mysqlConfig.username,
-        password: mysqlConfig.password,
+        port: mysqlConfig.port ? Number(mysqlConfig.port) : (isSqlServer ? 1433 : 3306),
+        username: mysqlConfig.username || '',
+        password: mysqlConfig.password || '',
         database_name: mysqlConfig.database
       };
 
@@ -1035,7 +1038,7 @@ const Connector = () => {
                       value={mysqlConfig.host}
                       onChange={e => handleMysqlChange('host', e.target.value)}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
-                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'e.g. localhost or 127.0.0.1' : 'e.g. 127.0.0.1'}
+                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'e.g. SONIA\\SQLEXPRESS or localhost' : 'e.g. localhost'}
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1046,19 +1049,21 @@ const Connector = () => {
                       value={mysqlConfig.port}
                       onChange={e => handleMysqlChange('port', e.target.value === '' ? '' : Number(e.target.value))}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
-                      placeholder={mysqlConfig.db_type === 'sqlserver' ? '1433' : '3306'}
+                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'Optional' : '3306'}
                     />
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Username</label>
+                    <label className="form-label">
+                      Username {mysqlConfig.db_type === 'sqlserver' && <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>(Optional)</span>}
+                    </label>
                     <input
                       type="text"
                       className="form-input"
                       value={mysqlConfig.username}
                       onChange={e => handleMysqlChange('username', e.target.value)}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
-                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'e.g. sa' : 'e.g. root'}
+                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'Leave blank for Windows Auth, or sa' : 'e.g. root'}
                     />
                   </div>
                 </div>
@@ -1066,7 +1071,9 @@ const Connector = () => {
                 {/* Row 2: Password, Database Name (Wider), Validate Button */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(320px, 2.5fr) minmax(180px, auto)', gap: '16px', marginTop: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Password</label>
+                    <label className="form-label">
+                      Password {mysqlConfig.db_type === 'sqlserver' && <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>(Optional)</span>}
+                    </label>
                     <div style={{ position: 'relative' }}>
                       <input
                         type={showPassword ? "text" : "password"}
@@ -1074,7 +1081,7 @@ const Connector = () => {
                         value={mysqlConfig.password}
                         onChange={e => handleMysqlChange('password', e.target.value)}
                         style={{ backgroundColor: 'var(--bg-panel)', paddingRight: '40px' }}
-                        placeholder="Enter password"
+                        placeholder={mysqlConfig.db_type === 'sqlserver' ? 'Leave blank for Windows Auth' : 'Enter password'}
                       />
                       <button
                         type="button"
