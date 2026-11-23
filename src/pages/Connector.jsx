@@ -53,9 +53,9 @@ const Connector = () => {
   const [isMysqlModalOpen, setIsMysqlModalOpen] = useState(false);
   const [mysqlConfig, setMysqlConfig] = useState({
     db_type: 'mysql',
-    host: '',
-    port: '',
-    username: '',
+    host: 'localhost',
+    port: '3306',
+    username: 'root',
     password: '',
     database: ''
   });
@@ -65,6 +65,7 @@ const Connector = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSchedulerActive, setIsSchedulerActive] = useState(false);
   const [schedulerInterval, setSchedulerInterval] = useState('5');
+  const [isAnySyncRunning, setIsAnySyncRunning] = useState(false);
 
   // Auto-suggest DB name based on Company Name (user can still freely change it)
   useEffect(() => {
@@ -75,12 +76,7 @@ const Connector = () => {
   }, [companyName, isEditMode, isDbCustomized]);
 
   const isMysqlConfigMatchingExisting = (cfg) => {
-    // Automatic validation is ONLY for 2nd time connector onwards (when at least one connection exists in allConfigs)
-    if (!cfg || !cfg.database || !Array.isArray(allConfigs) || allConfigs.length === 0) {
-      return false;
-    }
-    
-    if (!baselineMysql || !baselineMysql.host) {
+    if (!cfg || !cfg.database || !baselineMysql) {
       return false;
     }
 
@@ -89,23 +85,9 @@ const Connector = () => {
     const portMatch = Number(cfg.port || 0) === Number(baselineMysql.port || 0);
     const userMatch = String(cfg.username || '').trim() === String(baselineMysql.username || '').trim();
     const passMatch = String(cfg.password || '') === String(baselineMysql.password || '');
+    const dbMatch = String(cfg.database || '').trim().toLowerCase() === String(baselineMysql.database || '').trim().toLowerCase();
 
-    if (!typeMatch || !hostMatch || !portMatch || !userMatch || !passMatch) {
-      return false;
-    }
-
-    // Check if baseline database matches
-    if (baselineMysql.database && String(cfg.database).trim().toLowerCase() === String(baselineMysql.database).trim().toLowerCase()) {
-      return true;
-    }
-
-    // Check if any existing connection in allConfigs used this database
-    const hasSameDbInConfigs = allConfigs.some(c => {
-      const cDb = c.database_name;
-      return cDb && String(cDb).trim().toLowerCase() === String(cfg.database).trim().toLowerCase();
-    });
-
-    return hasSameDbInConfigs;
+    return typeMatch && hostMatch && portMatch && userMatch && passMatch && dbMatch;
   };
 
   const showToast = (type, msg) => {
@@ -134,13 +116,17 @@ const Connector = () => {
       if (res.data) {
         const configData = {
           db_type: res.data.db_type || 'mysql',
-          host: res.data.host || '',
-          port: res.data.port || '',
-          username: res.data.username || '',
+          host: res.data.host || 'localhost',
+          port: res.data.port || (res.data.db_type === 'sqlserver' ? 1433 : 3306),
+          username: res.data.username !== undefined && res.data.username !== null ? res.data.username : (res.data.db_type === 'sqlserver' ? '' : 'root'),
           password: res.data.password || '',
           database: res.data.database_name || ''
         };
         setBaselineMysql(configData);
+        setMysqlConfig(configData);
+        if (configData.database) {
+          setMysqlConnectionState('connected');
+        }
       }
     } catch (err) {
       console.error("Could not fetch database config", err);
@@ -271,14 +257,16 @@ const Connector = () => {
     setBaselineTally({ host: config.tally_host, port: config.tally_port });
 
     const targetDbType = config.db_type || (baselineMysql && baselineMysql.db_type) || 'mysql';
-    setMysqlConfig({
+    const editMysqlConfig = {
       db_type: targetDbType,
       host: config.db_host || (baselineMysql && baselineMysql.host) || 'localhost',
       port: config.db_port || (baselineMysql && baselineMysql.port) || (targetDbType === 'sqlserver' ? 1433 : 3306),
-      username: config.db_username !== undefined && config.db_username !== null ? config.db_username : ((baselineMysql && baselineMysql.username) || ''),
+      username: config.db_username !== undefined && config.db_username !== null ? config.db_username : ((baselineMysql && baselineMysql.username) || (targetDbType === 'sqlserver' ? '' : 'root')),
       password: config.db_password !== undefined && config.db_password !== null ? config.db_password : ((baselineMysql && baselineMysql.password) || ''),
       database: config.database_name || (baselineMysql && baselineMysql.database) || ''
-    });
+    };
+    setMysqlConfig(editMysqlConfig);
+    setBaselineMysql(editMysqlConfig);
     setMysqlConnectionState('connected');
 
     setSyncStatus(null);
@@ -471,6 +459,17 @@ const Connector = () => {
       return;
     }
 
+    const isSqlServer = mysqlConfig.db_type === 'sqlserver';
+    if (!mysqlConfig.host || !mysqlConfig.database || (!isSqlServer && !mysqlConfig.username)) {
+      showToast('error', isSqlServer ? 'Host and Database Name are required' : 'Host, Username, and Database are required');
+      return;
+    }
+
+    if (mysqlConnectionState !== 'connected') {
+      showToast('error', 'Please click "Validate Database" to verify database connection first.');
+      return;
+    }
+
     setIsModalOpen(false);
 
     try {
@@ -521,9 +520,13 @@ const Connector = () => {
       }
       showToast('success', isEditMode ? 'Updated Successfully' : 'Saved Successfully');
 
-      // Fetch latest config and run the request on main page
-      setHistoryRefreshKey(prev => prev + 1);
-      triggerAutoTest(connectionName);
+      // Immediately select connection and start sync
+      setSelectedConnectionName(connectionName);
+      setHasConfig(true);
+      setBaselineTally({ host, port });
+      setConnectionState('connected');
+      fetchConfig();
+      runAutoTest(connectionName, host, port, customRequest);
 
     } catch (err) {
       showToast('error', err.response?.data?.detail || 'Operation Failed');
@@ -547,6 +550,8 @@ const Connector = () => {
       if (logId) {
         setResponsePayload(`Sync initiated in background... Please wait...`);
         showToast('success', 'Sync Started in Background');
+        // Refresh table immediately so this connection shows "In Progress..." right away
+        setHistoryRefreshKey(prev => prev + 1);
         
         const pollProgress = async () => {
           try {
@@ -671,55 +676,62 @@ const Connector = () => {
           <h1 className="page-title" style={{ margin: 0 }}>Connector Configuration</h1>
         </div>
         <div style={{ position: 'relative' }}>
-          <button className="btn btn-primary" onClick={() => {
-            setConnectionName('');
-            setReportName('');
-            setFileFormat('XML');
-            setIsSchedulerActive(false);
-            setSchedulerInterval('5');
-            setIsEditMode(false);
-            setIsDbCustomized(false);
+          <button
+            className="btn btn-primary"
+            disabled={isAnySyncRunning || isSendingRequest}
+            title={(isAnySyncRunning || isSendingRequest) ? "A sync is currently in progress. Please wait until it finishes." : "Add Connector"}
+            style={{
+              opacity: (isAnySyncRunning || isSendingRequest) ? 0.6 : 1,
+              cursor: (isAnySyncRunning || isSendingRequest) ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onClick={() => {
+              if (isAnySyncRunning || isSendingRequest) return;
+              setConnectionName('');
+              setReportName('');
+              setFileFormat('XML');
+              setIsSchedulerActive(false);
+              setSchedulerInterval('5');
+              setIsEditMode(false);
+              setIsDbCustomized(false);
 
-            let currentHost = 'localhost';
-            let currentPort = 9000;
-            let isCopied = false;
-            
-            // Retain last used company name if available, user can still freely change it
-            let retainedCompany = '';
-            if (allConfigs && allConfigs.length > 0) {
-              // 2nd time onwards: retain Tally Host/Port, Company Name & Database credentials
-              currentHost = allConfigs[0].tally_host || 'localhost';
-              currentPort = allConfigs[0].tally_port || 9000;
-              retainedCompany = allConfigs[0].company_name || '';
-              isCopied = true;
-
-              const autoDb = retainedCompany ? generateDbName(retainedCompany) : (allConfigs[0].database_name || '');
-              if (baselineMysql && baselineMysql.host) {
-                setMysqlConfig({
-                  ...baselineMysql,
-                  db_type: baselineMysql.db_type || 'mysql',
-                  database: autoDb
-                });
-                setMysqlConnectionState('unknown');
+              let currentHost = 'localhost';
+              let currentPort = 9000;
+              let isCopied = false;
+              
+              // Retain last used company name if available, user can still freely change it
+              let retainedCompany = '';
+              if (allConfigs && allConfigs.length > 0) {
+                currentHost = allConfigs[0].tally_host || 'localhost';
+                currentPort = allConfigs[0].tally_port || 9000;
+                retainedCompany = allConfigs[0].company_name || '';
+                isCopied = true;
               } else {
-                setMysqlConfig({ db_type: 'mysql', host: '', port: '3306', username: '', password: '', database: autoDb });
-                setMysqlConnectionState('unknown');
+                retainedCompany = companyName || '';
               }
-            } else {
-              // 1st time: retain current companyName if user already typed it
-              retainedCompany = companyName || '';
+              
               const autoDb = retainedCompany ? generateDbName(retainedCompany) : '';
-              setMysqlConfig({ db_type: 'mysql', host: '', port: '3306', username: '', password: '', database: autoDb });
-              setMysqlConnectionState('unknown');
-            }
-            
-            setCompanyName(retainedCompany);
-            
-            setHost(currentHost);
-            setPort(currentPort);
-            setBaselineTally(isCopied ? { host: currentHost, port: currentPort } : null);
-            setConnectionState(isCopied ? 'connected' : 'unknown');
-            setCustomRequest(`<ENVELOPE>
+              const initialConfig = {
+                db_type: 'mysql',
+                host: 'localhost',
+                port: 3306,
+                username: 'root',
+                password: '',
+                database: autoDb
+              };
+              setMysqlConfig(initialConfig);
+              setBaselineMysql(initialConfig);
+              setMysqlConnectionState('connected');
+              
+              setCompanyName(retainedCompany);
+              
+              setHost(currentHost);
+              setPort(currentPort);
+              setBaselineTally(isCopied ? { host: currentHost, port: currentPort } : null);
+              setConnectionState(isCopied ? 'connected' : 'unknown');
+              setCustomRequest(`<ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>EXPORT</TALLYREQUEST>
@@ -736,12 +748,20 @@ const Connector = () => {
     </DESC>
   </BODY>
 </ENVELOPE>`);
-            setSyncStatus(null);
-            setSyncProgress(0);
-            
-            setIsModalOpen(true);
-          }}>
-            Add Connector
+              setSyncStatus(null);
+              setSyncProgress(0);
+              
+              setIsModalOpen(true);
+            }}
+          >
+            {(isAnySyncRunning || isSendingRequest) ? (
+              <>
+                <Loader2 size={16} className="spin" />
+                Sync in Progress...
+              </>
+            ) : (
+              'Add Connector'
+            )}
           </button>
         </div>
       </div>
@@ -785,6 +805,7 @@ const Connector = () => {
           onConfigUpdated={triggerAutoTest}
           onRunManualSync={triggerAutoTest}
           onEditConnection={handleEditConnection}
+          onSyncStateChange={setIsAnySyncRunning}
           refreshTrigger={historyRefreshKey}
         />
       </div>
@@ -1022,12 +1043,21 @@ const Connector = () => {
                       onChange={e => {
                         const newType = e.target.value;
                         let newPort = mysqlConfig.port;
-                        if (newType === 'sqlserver' && (Number(newPort) === 3306 || !newPort)) {
+                        let newHost = 'localhost';
+                        let newUser = '';
+                        let newPass = '';
+                        if (newType === 'sqlserver') {
                           newPort = 1433;
-                        } else if (newType === 'mysql' && (Number(newPort) === 1433 || !newPort)) {
+                          newHost = 'localhost';
+                          newUser = '';
+                          newPass = '';
+                        } else if (newType === 'mysql') {
                           newPort = 3306;
+                          newHost = 'localhost';
+                          newUser = 'root';
+                          newPass = '';
                         }
-                        const updated = { ...mysqlConfig, db_type: newType, port: newPort };
+                        const updated = { ...mysqlConfig, db_type: newType, host: newHost, port: newPort, username: newUser, password: newPass };
                         setMysqlConfig(updated);
                         if (isMysqlConfigMatchingExisting(updated)) {
                           setMysqlConnectionState('connected');
@@ -1050,7 +1080,7 @@ const Connector = () => {
                       value={mysqlConfig.host}
                       onChange={e => handleMysqlChange('host', e.target.value)}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
-                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'e.g. SONIA\\SQLEXPRESS or localhost' : 'e.g. localhost'}
+                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'e.g. localhost or localhost\\SQLEXPRESS' : 'e.g. localhost'}
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>

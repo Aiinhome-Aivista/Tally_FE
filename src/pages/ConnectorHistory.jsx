@@ -19,11 +19,12 @@ const CustomSpinner = ({ size = 18, color = "currentColor" }) => (
   </svg>
 );
 
-const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync, onEditConnection, refreshTrigger }) => {
+const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync, onEditConnection, onSyncStateChange, refreshTrigger }) => {
   const navigate = useNavigate();
   const [configs, setConfigs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [status, setStatus] = useState(null);
 
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
@@ -122,6 +123,14 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     return () => clearInterval(interval);
   }, [refreshTrigger]);
 
+  const isAnySyncRunning = isSyncingAll || isRunning || configs.some(c => c.sync_status === 'IN_PROGRESS');
+
+  useEffect(() => {
+    if (onSyncStateChange) {
+      onSyncStateChange(isAnySyncRunning);
+    }
+  }, [isAnySyncRunning, onSyncStateChange]);
+
   const showToast = (type, msg) => {
     setStatus({ type, msg });
     setTimeout(() => {
@@ -149,6 +158,10 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
   };
 
   const handleRun = async (config) => {
+    if (isAnySyncRunning) {
+      showToast('error', 'A sync is already in progress. Please wait.');
+      return;
+    }
     if (onRunManualSync) {
       onRunManualSync(config.connection_name);
       return;
@@ -237,10 +250,12 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     }
   };
 
-  // --- BEGIN SYNC ALL STATE & FUNCTION ---
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
-
+  // --- BEGIN SYNC ALL FUNCTION ---
   const handleSyncAll = async () => {
+    if (isAnySyncRunning) {
+      showToast('error', 'A sync is already in progress. Please wait.');
+      return;
+    }
     if (configs.length === 0) {
       showToast('error', 'No connections to sync.');
       return;
@@ -283,10 +298,16 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
           {/* --- BEGIN SYNC ALL BUTTON --- */}
           <button
             className="btn btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              opacity: (isSyncingAll || isLoading || configs.length === 0 || isAnySyncRunning) ? 0.6 : 1,
+              cursor: (isSyncingAll || isLoading || configs.length === 0 || isAnySyncRunning) ? 'not-allowed' : 'pointer'
+            }}
             onClick={handleSyncAll}
-            disabled={isSyncingAll || isLoading || configs.length === 0}
-            title="Sync all active connections sequentially"
+            disabled={isSyncingAll || isLoading || configs.length === 0 || isAnySyncRunning}
+            title={isAnySyncRunning ? "A sync is currently in progress. Please wait..." : "Sync all active connections sequentially"}
           >
             {isSyncingAll ? <Loader2 size={18} className="spin" /> : <Play size={18} />}
             Sync All
@@ -425,10 +446,16 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                     <td>
                       <button
                         className="btn"
-                        style={{ padding: '8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}
-                        title="Run Sync Now"
+                        style={{
+                          padding: '8px',
+                          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                          color: 'var(--success)',
+                          opacity: (isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? 0.35 : 1,
+                          cursor: (isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? 'not-allowed' : 'pointer'
+                        }}
+                        title={(isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? "Sync in progress. Please wait..." : "Run Sync Now"}
                         onClick={() => handleRun(config)}
-                        disabled={isRunning}
+                        disabled={isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS'}
                       >
                         <Play size={16} />
                       </button>
