@@ -159,14 +159,14 @@ const Connector = () => {
         ? (testName ? res.data.find(c => c.connection_name === testName) || res.data[0] : res.data[0])
         : null;
 
-      if (configData && configData.tally_host) {
+      if (configData) {
         setSelectedConnectionName(configData.connection_name);
-        setHost(configData.tally_host);
-        setPort(configData.tally_port);
+        setHost(configData.tally_host || 'localhost');
+        setPort(configData.tally_port || 9000);
         setCompanyName(configData.company_name || '');
         setReportName(configData.report_name || '');
         setFileFormat(configData.file_format || 'XML');
-        setBaselineTally({ host: configData.tally_host, port: configData.tally_port });
+        setBaselineTally({ host: configData.tally_host || 'localhost', port: configData.tally_port || 9000 });
 
         if (testName || !sessionStorage.getItem('tally_customRequest')) {
           setCustomRequest(configData.request_xml || '');
@@ -176,7 +176,7 @@ const Connector = () => {
         setDynamicFiltersStr(configData.dynamic_filters ? JSON.stringify(configData.dynamic_filters, null, 2) : '');
 
         setHasConfig(true);
-        checkConnectionStatus(configData.tally_host, configData.tally_port);
+        checkConnectionStatus(configData.tally_host || 'localhost', configData.tally_port || 9000);
 
         if (testName) {
           runAutoTest(testName, configData.tally_host, configData.tally_port, configData.request_xml);
@@ -270,16 +270,16 @@ const Connector = () => {
     setConnectionState('connected');
     setBaselineTally({ host: config.tally_host, port: config.tally_port });
 
-    if (baselineMysql && baselineMysql.host) {
-      setMysqlConfig({
-        ...baselineMysql,
-        db_type: config.db_type || baselineMysql.db_type || 'mysql',
-        database: config.database_name || baselineMysql.database || ''
-      });
-      setMysqlConnectionState('connected');
-    } else {
-      setMysqlConnectionState('connected');
-    }
+    const targetDbType = config.db_type || (baselineMysql && baselineMysql.db_type) || 'mysql';
+    setMysqlConfig({
+      db_type: targetDbType,
+      host: config.db_host || (baselineMysql && baselineMysql.host) || 'localhost',
+      port: config.db_port || (baselineMysql && baselineMysql.port) || (targetDbType === 'sqlserver' ? 1433 : 3306),
+      username: config.db_username !== undefined && config.db_username !== null ? config.db_username : ((baselineMysql && baselineMysql.username) || ''),
+      password: config.db_password !== undefined && config.db_password !== null ? config.db_password : ((baselineMysql && baselineMysql.password) || ''),
+      database: config.database_name || (baselineMysql && baselineMysql.database) || ''
+    });
+    setMysqlConnectionState('connected');
 
     setSyncStatus(null);
     setSyncProgress(0);
@@ -340,6 +340,7 @@ const Connector = () => {
       }
 
       // Save Tally Config
+      const isSqlSrv = mysqlConfig.db_type === 'sqlserver';
       const payload = {
         connection_name: connectionName,
         tally_host: host,
@@ -350,7 +351,12 @@ const Connector = () => {
         request_xml: customRequest,
         scheduler_timing: isSchedulerActive ? schedulerInterval : 'inactive',
         dynamic_filters: parsedFilters,
-        database_name: mysqlConfig.database
+        database_name: mysqlConfig.database,
+        db_type: mysqlConfig.db_type || 'mysql',
+        db_host: mysqlConfig.host,
+        db_port: mysqlConfig.port ? Number(mysqlConfig.port) : (isSqlSrv ? 1433 : 3306),
+        db_username: mysqlConfig.username || '',
+        db_password: mysqlConfig.password || ''
       };
 
       if (isEditMode) {
@@ -478,6 +484,7 @@ const Connector = () => {
         }
       }
 
+      const isSqlSrv = mysqlConfig.db_type === 'sqlserver';
       const payload = {
         connection_name: connectionName,
         tally_host: host,
@@ -488,7 +495,12 @@ const Connector = () => {
         request_xml: customRequest,
         scheduler_timing: isSchedulerActive ? schedulerInterval : 'inactive',
         dynamic_filters: parsedFilters,
-        database_name: mysqlConfig.database
+        database_name: mysqlConfig.database,
+        db_type: mysqlConfig.db_type || 'mysql',
+        db_host: mysqlConfig.host,
+        db_port: mysqlConfig.port ? Number(mysqlConfig.port) : (isSqlSrv ? 1433 : 3306),
+        db_username: mysqlConfig.username || '',
+        db_password: mysqlConfig.password || ''
       };
 
       // Save Target Database Config first

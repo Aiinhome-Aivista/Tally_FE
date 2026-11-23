@@ -339,7 +339,21 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                       {config.connection_name ? config.connection_name : <span style={{ fontStyle: 'italic', color: 'var(--text-secondary)' }}>(Unnamed #{config.id})</span>}
                     </td>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.88rem', color: 'var(--accent-color)', fontWeight: 600 }}>
-                      {config.database_name || 'N/A'}
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                          fontSize: '0.68rem',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: config.db_type === 'sqlserver' ? 'rgba(234, 88, 12, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                          color: config.db_type === 'sqlserver' ? '#fb923c' : '#34d399',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          {config.db_type === 'sqlserver' ? 'MSSQL' : 'MySQL'}
+                        </span>
+                        <span>{config.database_name || 'N/A'}</span>
+                      </div>
                     </td>
                     <td style={{ fontWeight: 500 }}>{config.company_name || 'N/A'}</td>
                     <td>
