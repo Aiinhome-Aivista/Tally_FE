@@ -97,16 +97,8 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
           };
         }));
         
-        // Group / sort configs primarily by database_name, then company_name, then report_name
-        configuredList.sort((a, b) => {
-          const dbA = (a.database_name || '').toLowerCase();
-          const dbB = (b.database_name || '').toLowerCase();
-          if (dbA !== dbB) return dbA.localeCompare(dbB);
-          const compA = (a.company_name || '').toLowerCase();
-          const compB = (b.company_name || '').toLowerCase();
-          if (compA !== compB) return compA.localeCompare(compB);
-          return (a.report_name || '').localeCompare(b.report_name || '');
-        });
+        // Latest added connection always appears on top (id descending)
+        configuredList.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
 
         setConfigs(configuredList);
       } else {
@@ -318,10 +310,10 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
           <table>
             <thead>
               <tr>
+                <th>Connection Name</th>
                 <th>Database Name</th>
                 <th>Company Name</th>
                 <th>Report Name</th>
-                <th>Connection Name</th>
                 <th>Status</th>
                 <th>Rows Processed</th>
                 <th>Scheduler</th>
@@ -343,6 +335,9 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
               ) : (
                 configs.map((config) => (
                   <tr key={config.id}>
+                    <td style={{ fontWeight: 500, color: 'var(--accent-color)' }}>
+                      {config.connection_name ? config.connection_name : <span style={{ fontStyle: 'italic', color: 'var(--text-secondary)' }}>(Unnamed #{config.id})</span>}
+                    </td>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.88rem', color: 'var(--accent-color)', fontWeight: 600 }}>
                       {config.database_name || 'N/A'}
                     </td>
@@ -351,9 +346,6 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                       <span style={{ fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-color)' }}>
                         {config.report_name || 'N/A'}
                       </span>
-                    </td>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                      {config.connection_name ? config.connection_name : <span style={{ fontStyle: 'italic', color: 'var(--text-secondary)' }}>(Unnamed #{config.id})</span>}
                     </td>
                     <td>
                       {isLoading ? (

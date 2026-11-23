@@ -653,7 +653,6 @@ const Connector = () => {
         <div style={{ position: 'relative' }}>
           <button className="btn btn-primary" onClick={() => {
             setConnectionName('');
-            setCompanyName('');
             setReportName('');
             setFileFormat('XML');
             setIsSchedulerActive(false);
@@ -665,28 +664,36 @@ const Connector = () => {
             let currentPort = 9000;
             let isCopied = false;
             
+            // Retain last used company name if available, user can still freely change it
+            let retainedCompany = '';
             if (allConfigs && allConfigs.length > 0) {
-              // 2nd time onwards: retain Tally Host/Port & Database credentials
+              // 2nd time onwards: retain Tally Host/Port, Company Name & Database credentials
               currentHost = allConfigs[0].tally_host || 'localhost';
               currentPort = allConfigs[0].tally_port || 9000;
+              retainedCompany = allConfigs[0].company_name || '';
               isCopied = true;
 
+              const autoDb = retainedCompany ? generateDbName(retainedCompany) : (allConfigs[0].database_name || '');
               if (baselineMysql && baselineMysql.host) {
                 setMysqlConfig({
                   ...baselineMysql,
                   db_type: baselineMysql.db_type || 'mysql',
-                  database: ''
+                  database: autoDb
                 });
                 setMysqlConnectionState('unknown');
               } else {
-                setMysqlConfig({ db_type: 'mysql', host: '', port: '3306', username: '', password: '', database: '' });
+                setMysqlConfig({ db_type: 'mysql', host: '', port: '3306', username: '', password: '', database: autoDb });
                 setMysqlConnectionState('unknown');
               }
             } else {
-              // 1st time: Tally defaults (localhost:9000), but Database is completely blank
-              setMysqlConfig({ db_type: 'mysql', host: '', port: '3306', username: '', password: '', database: '' });
+              // 1st time: retain current companyName if user already typed it
+              retainedCompany = companyName || '';
+              const autoDb = retainedCompany ? generateDbName(retainedCompany) : '';
+              setMysqlConfig({ db_type: 'mysql', host: '', port: '3306', username: '', password: '', database: autoDb });
               setMysqlConnectionState('unknown');
             }
+            
+            setCompanyName(retainedCompany);
             
             setHost(currentHost);
             setPort(currentPort);
@@ -984,7 +991,9 @@ const Connector = () => {
 
               <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginBottom: '20px' }}>
                 <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem' }}>Target Database Configuration</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                
+                {/* Row 1: DB Type, Host, Port, Username */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Database Type</label>
                     <select
@@ -1047,7 +1056,10 @@ const Connector = () => {
                       placeholder={mysqlConfig.db_type === 'sqlserver' ? 'e.g. sa' : 'e.g. root'}
                     />
                   </div>
+                </div>
 
+                {/* Row 2: Password, Database Name (Wider), Validate Button */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(320px, 2.5fr) minmax(180px, auto)', gap: '16px', marginTop: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Password</label>
                     <div style={{ position: 'relative' }}>
@@ -1083,7 +1095,9 @@ const Connector = () => {
                       }}
                       style={{
                         backgroundColor: 'var(--bg-panel)',
-                        height: '44px'
+                        height: '44px',
+                        fontFamily: 'monospace',
+                        fontWeight: 500
                       }}
                       placeholder="Enter database name"
                     />
@@ -1097,6 +1111,7 @@ const Connector = () => {
                       disabled={isMysqlValidating || (mysqlConnectionState === 'connected' && Boolean(mysqlConfig.database))}
                       style={{
                         width: '100%',
+                        minWidth: '180px',
                         height: '44px',
                         display: 'flex',
                         gap: '8px',
