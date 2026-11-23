@@ -6,7 +6,7 @@ import ConnectorHistory from './ConnectorHistory';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-// Auto-generate a valid MySQL database name from company name
+// Auto-generate clean database name from company name
 const generateDbName = (name) => {
   if (!name) return '';
   return name
@@ -52,17 +52,27 @@ const Connector = () => {
   const [showAddOptions, setShowAddOptions] = useState(false);
   const [isMysqlModalOpen, setIsMysqlModalOpen] = useState(false);
   const [mysqlConfig, setMysqlConfig] = useState({
+    db_type: 'mysql',
     host: '',
     port: '',
     username: '',
     password: '',
     database: ''
   });
+  const [isDbCustomized, setIsDbCustomized] = useState(false);
   const [isMysqlValidating, setIsMysqlValidating] = useState(false);
   const [mysqlConnectionState, setMysqlConnectionState] = useState('unknown');
   const [showPassword, setShowPassword] = useState(false);
   const [isSchedulerActive, setIsSchedulerActive] = useState(false);
   const [schedulerInterval, setSchedulerInterval] = useState('5');
+
+  // Auto-suggest DB name based on Company Name (user can still freely change it)
+  useEffect(() => {
+    if (!isEditMode && !isDbCustomized && companyName) {
+      const autoDb = generateDbName(companyName);
+      setMysqlConfig(prev => ({ ...prev, database: autoDb }));
+    }
+  }, [companyName, isEditMode, isDbCustomized]);
 
   const isMysqlConfigMatchingExisting = (cfg) => {
     // Automatic validation is ONLY for 2nd time connector onwards (when at least one connection exists in allConfigs)
@@ -74,12 +84,13 @@ const Connector = () => {
       return false;
     }
 
+    const typeMatch = (cfg.db_type || 'mysql') === (baselineMysql.db_type || 'mysql');
     const hostMatch = String(cfg.host || '').trim() === String(baselineMysql.host || '').trim();
     const portMatch = Number(cfg.port || 0) === Number(baselineMysql.port || 0);
     const userMatch = String(cfg.username || '').trim() === String(baselineMysql.username || '').trim();
     const passMatch = String(cfg.password || '') === String(baselineMysql.password || '');
 
-    if (!hostMatch || !portMatch || !userMatch || !passMatch) {
+    if (!typeMatch || !hostMatch || !portMatch || !userMatch || !passMatch) {
       return false;
     }
 
@@ -90,33 +101,12 @@ const Connector = () => {
 
     // Check if any existing connection in allConfigs used this database
     const hasSameDbInConfigs = allConfigs.some(c => {
-      const cDb = c.database_name || generateDbName(c.company_name || '');
-      return String(cDb).trim().toLowerCase() === String(cfg.database).trim().toLowerCase();
+      const cDb = c.database_name;
+      return cDb && String(cDb).trim().toLowerCase() === String(cfg.database).trim().toLowerCase();
     });
 
     return hasSameDbInConfigs;
   };
-
-  // Auto-generate DB name whenever companyName changes
-  useEffect(() => {
-    if (!isEditMode) {
-      if (companyName) {
-        const autoDb = generateDbName(companyName);
-        setMysqlConfig(prev => {
-          const updated = { ...prev, database: autoDb };
-          if (isMysqlConfigMatchingExisting(updated)) {
-            setMysqlConnectionState('connected');
-          } else {
-            setMysqlConnectionState('unknown');
-          }
-          return updated;
-        });
-      } else {
-        setMysqlConfig(prev => ({ ...prev, database: '' }));
-        setMysqlConnectionState('unknown');
-      }
-    }
-  }, [companyName, isEditMode]);
 
   const showToast = (type, msg) => {
     setStatus({ type, msg });
@@ -143,6 +133,7 @@ const Connector = () => {
       const res = await axios.get(`${API_URL}/mysql/config`);
       if (res.data) {
         const configData = {
+          db_type: res.data.db_type || 'mysql',
           host: res.data.host || '',
           port: res.data.port || '',
           username: res.data.username || '',
@@ -152,7 +143,7 @@ const Connector = () => {
         setBaselineMysql(configData);
       }
     } catch (err) {
-      console.error("Could not fetch MySQL config", err);
+      console.error("Could not fetch database config", err);
     }
   };
 
@@ -275,13 +266,15 @@ const Connector = () => {
     setIsSchedulerActive(isAct);
     setSchedulerInterval(isAct && timing.match(/^\d+$/) ? timing : '5');
     setIsEditMode(true);
+    setIsDbCustomized(true);
     setConnectionState('connected');
     setBaselineTally({ host: config.tally_host, port: config.tally_port });
 
     if (baselineMysql && baselineMysql.host) {
       setMysqlConfig({
         ...baselineMysql,
-        database: config.database_name || generateDbName(config.company_name || '') || baselineMysql.database
+        db_type: config.db_type || baselineMysql.db_type || 'mysql',
+        database: config.database_name || baselineMysql.database || ''
       });
       setMysqlConnectionState('connected');
     } else {
@@ -305,16 +298,22 @@ const Connector = () => {
   const handleSaveConfig = async (e) => {
     e.preventDefault();
 
+    if (!connectionName || !connectionName.trim()) {
+      showToast('error', 'Connection Name is required');
+      return;
+    }
+
     if (!mysqlConfig.host || !mysqlConfig.username || !mysqlConfig.database) {
-      showToast('error', 'MySQL Host, Username, and Database are required');
+      showToast('error', 'Database Host, Username, and Database are required');
       return;
     }
 
     setIsLoading(true);
     setStatus(null);
     try {
-      // Save MySQL Config
+      // Save Target Database Config
       const mysqlPayload = {
+        db_type: mysqlConfig.db_type || 'mysql',
         host: mysqlConfig.host,
         port: Number(mysqlConfig.port),
         username: mysqlConfig.username,
@@ -344,7 +343,8 @@ const Connector = () => {
         file_format: fileFormat,
         request_xml: customRequest,
         scheduler_timing: isSchedulerActive ? schedulerInterval : 'inactive',
-        dynamic_filters: parsedFilters
+        dynamic_filters: parsedFilters,
+        database_name: mysqlConfig.database
       };
 
       if (isEditMode) {
@@ -403,6 +403,7 @@ const Connector = () => {
 
     try {
       const payload = {
+        db_type: mysqlConfig.db_type || 'mysql',
         host: mysqlConfig.host,
         port: Number(mysqlConfig.port),
         username: mysqlConfig.username,
@@ -412,12 +413,12 @@ const Connector = () => {
 
       const res = await axios.post(`${API_URL}/mysql/validate`, payload);
       if (res.data && res.data.status === 'SUCCESS') {
-        showToast('success', 'Database Validated Successfully!');
+        showToast('success', res.data.message || 'Database Validated Successfully!');
         setMysqlConnectionState('connected');
         setBaselineMysql({ ...mysqlConfig, port: Number(mysqlConfig.port) });
       }
     } catch (err) {
-      showToast('error', err.response?.data?.detail || 'MySQL Validation Failed!');
+      showToast('error', err.response?.data?.detail || 'Database Validation Failed!');
       setMysqlConnectionState('disconnected');
     } finally {
       setIsMysqlValidating(false);
@@ -432,6 +433,7 @@ const Connector = () => {
 
     try {
       const payload = {
+        db_type: mysqlConfig.db_type || 'mysql',
         host: mysqlConfig.host,
         port: Number(mysqlConfig.port),
         username: mysqlConfig.username,
@@ -440,15 +442,21 @@ const Connector = () => {
       };
 
       await axios.post(`${API_URL}/mysql/config`, payload);
-      showToast('success', 'MySQL Connection Saved Successfully!');
+      showToast('success', 'Database Connection Saved Successfully!');
       setIsMysqlModalOpen(false);
     } catch (err) {
-      showToast('error', err.response?.data?.detail || 'Failed to save MySQL Connection');
+      showToast('error', err.response?.data?.detail || 'Failed to save Database Connection');
     }
   };
 
   const handleSendRequest = async (e) => {
     if (e) e.preventDefault();
+
+    if (!connectionName || !connectionName.trim()) {
+      showToast('error', 'Connection Name is required');
+      return;
+    }
+
     setIsModalOpen(false);
 
     try {
@@ -471,11 +479,13 @@ const Connector = () => {
         file_format: fileFormat,
         request_xml: customRequest,
         scheduler_timing: isSchedulerActive ? schedulerInterval : 'inactive',
-        dynamic_filters: parsedFilters
+        dynamic_filters: parsedFilters,
+        database_name: mysqlConfig.database
       };
 
-      // Save MySQL Config first
+      // Save Target Database Config first
       const mysqlPayload = {
+        db_type: mysqlConfig.db_type || 'mysql',
         host: mysqlConfig.host,
         port: Number(mysqlConfig.port),
         username: mysqlConfig.username,
@@ -649,13 +659,14 @@ const Connector = () => {
             setIsSchedulerActive(false);
             setSchedulerInterval('5');
             setIsEditMode(false);
+            setIsDbCustomized(false);
 
             let currentHost = 'localhost';
             let currentPort = 9000;
             let isCopied = false;
             
             if (allConfigs && allConfigs.length > 0) {
-              // 2nd time onwards: retain Tally Host/Port & MySQL credentials
+              // 2nd time onwards: retain Tally Host/Port & Database credentials
               currentHost = allConfigs[0].tally_host || 'localhost';
               currentPort = allConfigs[0].tally_port || 9000;
               isCopied = true;
@@ -663,16 +674,17 @@ const Connector = () => {
               if (baselineMysql && baselineMysql.host) {
                 setMysqlConfig({
                   ...baselineMysql,
+                  db_type: baselineMysql.db_type || 'mysql',
                   database: ''
                 });
                 setMysqlConnectionState('unknown');
               } else {
-                setMysqlConfig({ host: '', port: '', username: '', password: '', database: '' });
+                setMysqlConfig({ db_type: 'mysql', host: '', port: '3306', username: '', password: '', database: '' });
                 setMysqlConnectionState('unknown');
               }
             } else {
-              // 1st time: Tally defaults (localhost:9000), but MySQL is completely blank
-              setMysqlConfig({ host: '', port: '', username: '', password: '', database: '' });
+              // 1st time: Tally defaults (localhost:9000), but Database is completely blank
+              setMysqlConfig({ db_type: 'mysql', host: '', port: '3306', username: '', password: '', database: '' });
               setMysqlConnectionState('unknown');
             }
             
@@ -974,14 +986,42 @@ const Connector = () => {
                 <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem' }}>Target Database Configuration</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">MySQL Host</label>
+                    <label className="form-label">Database Type</label>
+                    <select
+                      className="form-input"
+                      value={mysqlConfig.db_type || 'mysql'}
+                      onChange={e => {
+                        const newType = e.target.value;
+                        let newPort = mysqlConfig.port;
+                        if (newType === 'sqlserver' && (Number(newPort) === 3306 || !newPort)) {
+                          newPort = 1433;
+                        } else if (newType === 'mysql' && (Number(newPort) === 1433 || !newPort)) {
+                          newPort = 3306;
+                        }
+                        const updated = { ...mysqlConfig, db_type: newType, port: newPort };
+                        setMysqlConfig(updated);
+                        if (isMysqlConfigMatchingExisting(updated)) {
+                          setMysqlConnectionState('connected');
+                        } else {
+                          setMysqlConnectionState('unknown');
+                        }
+                      }}
+                      style={{ backgroundColor: 'var(--bg-panel)', height: '44px' }}
+                    >
+                      <option value="mysql">MySQL</option>
+                      <option value="sqlserver">SQL Server (MSSQL)</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">{mysqlConfig.db_type === 'sqlserver' ? 'SQL Server Host' : 'MySQL Host'}</label>
                     <input
                       type="text"
                       className="form-input"
                       value={mysqlConfig.host}
                       onChange={e => handleMysqlChange('host', e.target.value)}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
-                      placeholder="e.g. 127.0.0.1"
+                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'e.g. localhost or 127.0.0.1' : 'e.g. 127.0.0.1'}
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -992,7 +1032,7 @@ const Connector = () => {
                       value={mysqlConfig.port}
                       onChange={e => handleMysqlChange('port', e.target.value === '' ? '' : Number(e.target.value))}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
-                      placeholder="3306"
+                      placeholder={mysqlConfig.db_type === 'sqlserver' ? '1433' : '3306'}
                     />
                   </div>
 
@@ -1004,7 +1044,7 @@ const Connector = () => {
                       value={mysqlConfig.username}
                       onChange={e => handleMysqlChange('username', e.target.value)}
                       style={{ backgroundColor: 'var(--bg-panel)' }}
-                      placeholder="Enter username"
+                      placeholder={mysqlConfig.db_type === 'sqlserver' ? 'e.g. sa' : 'e.g. root'}
                     />
                   </div>
 
@@ -1030,28 +1070,26 @@ const Connector = () => {
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      Database Name
-                      <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '4px', padding: '1px 6px' }}>
-                        🔒 Auto-generated
-                      </span>
+                    <label className="form-label">
+                      Database Name <span style={{ color: 'var(--danger)' }}>*</span>
                     </label>
                     <input
                       type="text"
                       className="form-input"
                       value={mysqlConfig.database}
-                      readOnly
-                      style={{
-                        backgroundColor: 'var(--bg-secondary)',
-                        cursor: 'not-allowed',
-                        opacity: 0.85,
-                        userSelect: 'all'
+                      onChange={e => {
+                        setIsDbCustomized(true);
+                        handleMysqlChange('database', e.target.value);
                       }}
-                      placeholder="Database name goes here..."
+                      style={{
+                        backgroundColor: 'var(--bg-panel)',
+                        height: '44px'
+                      }}
+                      placeholder="Enter database name"
                     />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', paddingTop: '28px', marginBottom: 0 }}>
                     <button
                       type="button"
                       className="btn btn-primary"

@@ -89,13 +89,25 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
           }
           
           return {
-            id: idx + 1,
+            id: cfg.id || idx + 1,
             last_sync: lastSync,
             sync_status: syncStatus,
             rows_processed: rowsProcessed,
             ...cfg
           };
         }));
+        
+        // Group / sort configs primarily by database_name, then company_name, then report_name
+        configuredList.sort((a, b) => {
+          const dbA = (a.database_name || '').toLowerCase();
+          const dbB = (b.database_name || '').toLowerCase();
+          if (dbA !== dbB) return dbA.localeCompare(dbB);
+          const compA = (a.company_name || '').toLowerCase();
+          const compB = (b.company_name || '').toLowerCase();
+          if (compA !== compB) return compA.localeCompare(compB);
+          return (a.report_name || '').localeCompare(b.report_name || '');
+        });
+
         setConfigs(configuredList);
       } else {
         setConfigs([]);
@@ -167,8 +179,8 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     }
   };
 
-  const handleDeleteClick = (connection_name) => {
-    setConnectionToDelete(connection_name);
+  const handleDeleteClick = (config) => {
+    setConnectionToDelete(config);
     setDeleteModalOpen(true);
   };
 
@@ -177,7 +189,10 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     setDeleteModalOpen(false);
     setIsLoading(true);
     try {
-      await axios.delete(`${API_URL}/config/${encodeURIComponent(connectionToDelete)}`);
+      const targetParam = connectionToDelete.id 
+        ? String(connectionToDelete.id) 
+        : (connectionToDelete.connection_name ? encodeURIComponent(connectionToDelete.connection_name) : 'blank');
+      await axios.delete(`${API_URL}/config/${targetParam}`);
       showToast('success', 'Connection Deleted');
       setConnectionToDelete(null);
       fetchConfigs();
@@ -212,6 +227,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
         tally_port: configObj.tally_port,
         company_name: configObj.company_name,
         report_name: configObj.report_name,
+        database_name: configObj.database_name,
         file_format: configObj.file_format,
         request_xml: editRequestXml
       });
@@ -302,12 +318,10 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
           <table>
             <thead>
               <tr>
-                <th>Connection Name</th>
-                <th>Host</th>
-                <th>Port</th>
+                <th>Database Name</th>
                 <th>Company Name</th>
                 <th>Report Name</th>
-                <th>Database Name</th>
+                <th>Connection Name</th>
                 <th>Status</th>
                 <th>Rows Processed</th>
                 <th>Scheduler</th>
@@ -329,13 +343,17 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
               ) : (
                 configs.map((config) => (
                   <tr key={config.id}>
-                    <td style={{ fontWeight: 500, color: 'var(--accent-color)' }}>{config.connection_name}</td>
-                    <td>{config.tally_host}</td>
-                    <td>{config.tally_port}</td>
-                    <td>{config.company_name || 'N/A'}</td>
-                    <td>{config.report_name || 'N/A'}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--accent-color)' }}>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.88rem', color: 'var(--accent-color)', fontWeight: 600 }}>
                       {config.database_name || 'N/A'}
+                    </td>
+                    <td style={{ fontWeight: 500 }}>{config.company_name || 'N/A'}</td>
+                    <td>
+                      <span style={{ fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-color)' }}>
+                        {config.report_name || 'N/A'}
+                      </span>
+                    </td>
+                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                      {config.connection_name ? config.connection_name : <span style={{ fontStyle: 'italic', color: 'var(--text-secondary)' }}>(Unnamed #{config.id})</span>}
                     </td>
                     <td>
                       {isLoading ? (
@@ -414,7 +432,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                         className="btn"
                         style={{ padding: '8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)' }}
                         title="Delete & Stop"
-                        onClick={() => handleDeleteClick(config.connection_name)}
+                        onClick={() => handleDeleteClick(config)}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -544,7 +562,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
             </div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '10px', color: 'var(--text-primary)' }}>Delete Connection?</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '28px', fontSize: '0.925rem', lineHeight: '1.5' }}>
-              Are you sure you want to delete the connection <strong style={{ color: 'var(--text-primary)' }}>"{connectionToDelete}"</strong>? This will permanently stop the sync for this configuration.
+              Are you sure you want to delete the connection <strong style={{ color: 'var(--text-primary)' }}>"{connectionToDelete?.connection_name || `Unnamed #${connectionToDelete?.id}`}"</strong>? This will permanently stop the sync for this configuration.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
               <button
