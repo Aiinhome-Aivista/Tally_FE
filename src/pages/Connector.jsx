@@ -176,7 +176,7 @@ const Connector = () => {
         setDynamicFiltersStr(configData.dynamic_filters ? JSON.stringify(configData.dynamic_filters, null, 2) : '');
 
         setHasConfig(true);
-        checkConnectionStatus();
+        checkConnectionStatus(configData.tally_host, configData.tally_port);
 
         if (testName) {
           runAutoTest(testName, configData.tally_host, configData.tally_port, configData.request_xml);
@@ -286,9 +286,14 @@ const Connector = () => {
     setIsModalOpen(true);
   };
 
-  const checkConnectionStatus = async () => {
+  const checkConnectionStatus = async (targetHost, targetPort) => {
     try {
-      await axios.post(`${API_URL}/sync/test`);
+      const h = targetHost || host || '127.0.0.1';
+      const p = targetPort || port || 9000;
+      await axios.post(`${API_URL}/sync/test`, {
+        tally_host: h,
+        tally_port: Number(p)
+      });
       setConnectionState('connected');
     } catch {
       setConnectionState('disconnected');
@@ -356,7 +361,7 @@ const Connector = () => {
       setHasConfig(true);
       setIsModalOpen(false);
       setConnectionState('unknown');
-      checkConnectionStatus();
+      checkConnectionStatus(host, port);
       fetchConfig();
     } catch (err) {
       showToast('error', err.response?.data?.detail || 'Save Failed');
