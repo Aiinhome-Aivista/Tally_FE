@@ -26,6 +26,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
   const [isRunning, setIsRunning] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [status, setStatus] = useState(null);
+  const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'MYSQL' | 'SQLSERVER'
 
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [selectedConnectionName, setSelectedConnectionName] = useState(null);
@@ -306,11 +307,85 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
   };
   // --- END SYNC ALL STATE & FUNCTION ---
 
+  const mysqlCount = configs.filter(c => (c.db_type || 'mysql').toLowerCase() !== 'sqlserver').length;
+  const mssqlCount = configs.filter(c => (c.db_type || 'mysql').toLowerCase() === 'sqlserver').length;
+
+  const filteredConfigs = configs.filter(config => {
+    const isMssql = (config.db_type || 'mysql').toLowerCase() === 'sqlserver';
+    if (activeTab === 'MYSQL') return !isMssql;
+    if (activeTab === 'SQLSERVER') return isMssql;
+    return true;
+  });
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        {!isEmbedded && <h1 className="page-title" style={{ margin: 0 }}>Connector History</h1>}
-        {isEmbedded && <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Configured Connections</h2>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          {!isEmbedded && <h1 className="page-title" style={{ margin: 0 }}>Connector History</h1>}
+          {isEmbedded && <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Configured Connections</h2>}
+          
+          {/* Database Filter Tabs */}
+          <div style={{
+            display: 'inline-flex',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            padding: '3px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            gap: '4px'
+          }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('ALL')}
+              style={{
+                padding: '4px 12px',
+                borderRadius: '6px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: activeTab === 'ALL' ? 'var(--accent-color, #3b82f6)' : 'transparent',
+                color: activeTab === 'ALL' ? '#ffffff' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              All ({configs.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('MYSQL')}
+              style={{
+                padding: '4px 12px',
+                borderRadius: '6px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: activeTab === 'MYSQL' ? 'var(--accent-color, #3b82f6)' : 'transparent',
+                color: activeTab === 'MYSQL' ? '#ffffff' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              MySQL ({mysqlCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('SQLSERVER')}
+              style={{
+                padding: '4px 12px',
+                borderRadius: '6px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: activeTab === 'SQLSERVER' ? 'var(--accent-color, #3b82f6)' : 'transparent',
+                color: activeTab === 'SQLSERVER' ? '#ffffff' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              SQL Server ({mssqlCount})
+            </button>
+          </div>
+        </div>
         
         <div style={{ display: 'flex', gap: '12px' }}>
           {/* --- BEGIN SYNC ALL BUTTON --- */}
@@ -357,22 +432,23 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                 <th>Rows Processed</th>
                 <th>Scheduler</th>
                 <th>Last Sync</th>
-                <th>View</th>
-                <th>Edit</th>
-                <th>Run</th>
-                <th>Delete</th>
+                <th style={{ textAlign: 'center', minWidth: '140px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {configs.length === 0 ? (
+              {filteredConfigs.length === 0 ? (
                 <tr>
-                  <td colSpan="12" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
                     <Database size={48} style={{ opacity: 0.5, marginBottom: '16px', display: 'inline-block' }} />
-                    <p style={{ margin: 0 }}>No active connections found.</p>
+                    <p style={{ margin: 0 }}>
+                      {configs.length === 0
+                        ? 'No active connections found.'
+                        : `No ${activeTab === 'MYSQL' ? 'MySQL' : activeTab === 'SQLSERVER' ? 'SQL Server' : ''} connections found.`}
+                    </p>
                   </td>
                 </tr>
               ) : (
-                configs.map((config) => (
+                filteredConfigs.map((config) => (
                   <tr key={config.id}>
                     <td style={{ fontWeight: 500, color: 'var(--accent-color)' }}>
                       {config.connection_name ? config.connection_name : <span style={{ fontStyle: 'italic', color: 'var(--text-secondary)' }}>(Unnamed #{config.id})</span>}
@@ -441,52 +517,48 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                       })()}
                     </td>
                     <td style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{config.last_sync}</td>
-                    <td>
-                      <button
-                        className="btn"
-                        style={{ padding: '8px', backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
-                        title="View Details"
-                        onClick={() => handleViewLogs(config.connection_name)}
-                      >
-                        <Eye size={16} />
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        className="btn"
-                        style={{ padding: '8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-color)' }}
-                        title="Edit Configuration"
-                        onClick={() => handleEditClick(config)}
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        className="btn"
-                        style={{
-                          padding: '8px',
-                          backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                          color: 'var(--success)',
-                          opacity: (isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? 0.35 : 1,
-                          cursor: (isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? 'not-allowed' : 'pointer'
-                        }}
-                        title={(isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? "Sync in progress. Please wait..." : "Run Sync Now"}
-                        onClick={() => handleRun(config)}
-                        disabled={isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS'}
-                      >
-                        <Play size={16} />
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        className="btn"
-                        style={{ padding: '8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)' }}
-                        title="Delete & Stop"
-                        onClick={() => handleDeleteClick(config)}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                        <button
+                          className="btn"
+                          style={{ padding: '6px 8px', backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
+                          title="View Logs & Payload"
+                          onClick={() => handleViewLogs(config.connection_name)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        <button
+                          className="btn"
+                          style={{ padding: '6px 8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-color)' }}
+                          title="Edit Configuration"
+                          onClick={() => handleEditClick(config)}
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          className="btn"
+                          style={{
+                            padding: '6px 8px',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            color: 'var(--success)',
+                            opacity: (isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? 0.35 : 1,
+                            cursor: (isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? 'not-allowed' : 'pointer'
+                          }}
+                          title={(isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS') ? "Sync in progress. Please wait..." : "Run Sync Now"}
+                          onClick={() => handleRun(config)}
+                          disabled={isRunning || isAnySyncRunning || config.sync_status === 'IN_PROGRESS'}
+                        >
+                          <Play size={15} />
+                        </button>
+                        <button
+                          className="btn"
+                          style={{ padding: '6px 8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)' }}
+                          title="Delete Connection"
+                          onClick={() => handleDeleteClick(config)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
