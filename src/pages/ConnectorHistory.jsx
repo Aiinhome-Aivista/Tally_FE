@@ -5,6 +5,15 @@ import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+// Parse ISO timestamp ensuring local time is preserved (prevents UTC +5:30 double conversion)
+const parseLocalDate = (ts) => {
+  if (!ts) return new Date();
+  if (typeof ts === 'string' && ts.endsWith('Z')) {
+    return new Date(ts.slice(0, -1));
+  }
+  return new Date(ts);
+};
+
 const CustomSpinner = ({ size = 18, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
     <circle cx="12" cy="12" r="3" fill={color} />
@@ -77,7 +86,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
             const logsRes = await axios.get(`${API_URL}/logs?connection_name=${cfg.connection_name}&limit=1`);
             if (logsRes.data && logsRes.data.logs && logsRes.data.logs.length > 0) {
               const latestLog = logsRes.data.logs[0];
-              const date = new Date(latestLog.timestamp);
+              const date = parseLocalDate(latestLog.timestamp);
               lastSync = new Intl.DateTimeFormat('en-US', {
                 month: 'short', day: 'numeric',
                 hour: '2-digit', minute: '2-digit'
@@ -181,6 +190,14 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
       showToast('error', 'A sync is already in progress. Please wait.');
       return;
     }
+
+    // Immediately mark row as IN_PROGRESS for instant UI visual feedback
+    setConfigs(prev => prev.map(c => 
+      c.connection_name === config.connection_name 
+        ? { ...c, sync_status: 'IN_PROGRESS' } 
+        : c
+    ));
+
     if (onRunManualSync) {
       onRunManualSync(config.connection_name);
       return;
@@ -282,6 +299,8 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     
     setIsSyncingAll(true);
     showToast('success', 'Starting Sync All...');
+    // Immediately mark all rows as IN_PROGRESS for instant UI feedback
+    setConfigs(prev => prev.map(c => ({ ...c, sync_status: 'IN_PROGRESS' })));
     
     // Start background sync for all configurations
     for (const config of configs) {
@@ -436,7 +455,14 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
               </tr>
             </thead>
             <tbody>
-              {filteredConfigs.length === 0 ? (
+              {isLoading && configs.length === 0 ? (
+                <tr>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                    <Loader2 size={36} className="spin" style={{ margin: '0 auto 12px', color: 'var(--accent-color)', display: 'block' }} />
+                    <p style={{ margin: 0, fontWeight: 500, fontSize: '0.95rem' }}>Fetching connections... Please wait</p>
+                  </td>
+                </tr>
+              ) : filteredConfigs.length === 0 ? (
                 <tr>
                   <td colSpan="9" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
                     <Database size={48} style={{ opacity: 0.5, marginBottom: '16px', display: 'inline-block' }} />
@@ -662,7 +688,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                           </span>
                         </div>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                          {new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(log.timestamp))}
+                          {new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(parseLocalDate(log.timestamp))}
                         </span>
                       </div>
 
