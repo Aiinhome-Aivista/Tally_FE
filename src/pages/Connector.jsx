@@ -271,6 +271,7 @@ const Connector = () => {
 
     setSyncStatus(null);
     setSyncProgress(0);
+    setShowPassword(false);
     setIsModalOpen(true);
   };
 
@@ -354,7 +355,8 @@ const Connector = () => {
       }
       showToast('success', isEditMode ? 'Updated Successfully' : 'Saved Successfully');
       setHasConfig(true);
-      setIsModalOpen(false);
+      setShowPassword(false);
+    setIsModalOpen(false);
       setConnectionState('unknown');
       checkConnectionStatus(host, port);
       fetchConfig();
@@ -470,6 +472,7 @@ const Connector = () => {
       return;
     }
 
+    setShowPassword(false);
     setIsModalOpen(false);
 
     try {
@@ -774,7 +777,8 @@ const Connector = () => {
               setSyncStatus(null);
               setSyncProgress(0);
               
-              setIsModalOpen(true);
+              setShowPassword(false);
+    setIsModalOpen(true);
             }}
           >
             {(isAnySyncRunning || isSendingRequest) ? (

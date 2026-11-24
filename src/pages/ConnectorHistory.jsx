@@ -61,7 +61,8 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
   };
 
   const fetchConfigs = async (silent = false) => {
-    if (!silent) setIsLoading(true);
+    // Only show full loading spinner on initial empty load, never during background updates
+    if (!silent && configs.length === 0) setIsLoading(true);
     try {
       const res = await axios.get(`${API_URL}/config`);
       
