@@ -700,33 +700,56 @@ const Connector = () => {
               let currentHost = 'localhost';
               let currentPort = 9000;
               let isCopied = false;
-              
-              // Retain last used company name if available, user can still freely change it
               let retainedCompany = '';
+              let initialConfig;
+
               if (allConfigs && allConfigs.length > 0) {
-                currentHost = allConfigs[0].tally_host || 'localhost';
-                currentPort = allConfigs[0].tally_port || 9000;
-                retainedCompany = allConfigs[0].company_name || '';
+                // Subsequent Add: retain previous connection and database credentials
+                const lastCfg = allConfigs[0];
+                currentHost = lastCfg.tally_host || 'localhost';
+                currentPort = lastCfg.tally_port || 9000;
+                retainedCompany = lastCfg.company_name || '';
                 isCopied = true;
+                
+                const lastDbType = lastCfg.db_type || 'mysql';
+                initialConfig = {
+                  db_type: lastDbType,
+                  host: lastCfg.db_host || 'localhost',
+                  port: lastCfg.db_port || (lastDbType === 'sqlserver' ? 1433 : 3306),
+                  username: lastCfg.db_username !== undefined && lastCfg.db_username !== null ? lastCfg.db_username : (lastDbType === 'sqlserver' ? '' : 'root'),
+                  password: lastCfg.db_password || '',
+                  database: lastCfg.database_name || ''
+                };
+                setMysqlConfig(initialConfig);
+                setBaselineMysql(initialConfig);
+                if (initialConfig.database && (lastDbType === 'sqlserver' || initialConfig.username)) {
+                  setMysqlConnectionState('connected');
+                } else {
+                  setMysqlConnectionState('unknown');
+                }
+                setIsDbCustomized(Boolean(initialConfig.database));
               } else {
-                retainedCompany = companyName || '';
+                // First Time: completely clean initial state with defaults and blank password/database
+                currentHost = 'localhost';
+                currentPort = 9000;
+                retainedCompany = '';
+                isCopied = false;
+                
+                initialConfig = {
+                  db_type: 'mysql',
+                  host: 'localhost',
+                  port: 3306,
+                  username: 'root',
+                  password: '',
+                  database: ''
+                };
+                setMysqlConfig(initialConfig);
+                setBaselineMysql(null);
+                setMysqlConnectionState('unknown');
+                setIsDbCustomized(false);
               }
               
-              const autoDb = retainedCompany ? generateDbName(retainedCompany) : '';
-              const initialConfig = {
-                db_type: 'mysql',
-                host: 'localhost',
-                port: 3306,
-                username: 'root',
-                password: '',
-                database: autoDb
-              };
-              setMysqlConfig(initialConfig);
-              setBaselineMysql(initialConfig);
-              setMysqlConnectionState('connected');
-              
               setCompanyName(retainedCompany);
-              
               setHost(currentHost);
               setPort(currentPort);
               setBaselineTally(isCopied ? { host: currentHost, port: currentPort } : null);
@@ -1042,28 +1065,20 @@ const Connector = () => {
                       value={mysqlConfig.db_type || 'mysql'}
                       onChange={e => {
                         const newType = e.target.value;
-                        let newPort = mysqlConfig.port;
-                        let newHost = 'localhost';
-                        let newUser = '';
-                        let newPass = '';
-                        if (newType === 'sqlserver') {
-                          newPort = 1433;
-                          newHost = 'localhost';
-                          newUser = '';
-                          newPass = '';
-                        } else if (newType === 'mysql') {
-                          newPort = 3306;
-                          newHost = 'localhost';
-                          newUser = 'root';
-                          newPass = '';
-                        }
-                        const updated = { ...mysqlConfig, db_type: newType, host: newHost, port: newPort, username: newUser, password: newPass };
-                        setMysqlConfig(updated);
-                        if (isMysqlConfigMatchingExisting(updated)) {
-                          setMysqlConnectionState('connected');
-                        } else {
-                          setMysqlConnectionState('unknown');
-                        }
+                        setIsDbCustomized(true);
+                        
+                        // When switching Database Type, completely clean password, database name, and reset validation
+                        const cleanConfig = {
+                          db_type: newType,
+                          host: 'localhost',
+                          port: newType === 'sqlserver' ? 1433 : 3306,
+                          username: newType === 'sqlserver' ? '' : 'root',
+                          password: '',
+                          database: ''
+                        };
+                        setMysqlConfig(cleanConfig);
+                        setBaselineMysql(null);
+                        setMysqlConnectionState('unknown');
                       }}
                       style={{ backgroundColor: 'var(--bg-panel)', height: '44px' }}
                     >

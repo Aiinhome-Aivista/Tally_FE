@@ -157,6 +157,23 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     fetchConnectionLogs(connection_name);
   };
 
+  useEffect(() => {
+    let interval;
+    if (isLogModalOpen && selectedConnectionName) {
+      interval = setInterval(async () => {
+        try {
+          const res = await axios.get(`${API_URL}/logs?connection_name=${selectedConnectionName}&limit=50`);
+          if (res.data && res.data.logs) {
+            setConnectionLogs(res.data.logs);
+          }
+        } catch (e) {}
+      }, 2000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isLogModalOpen, selectedConnectionName]);
+
   const handleRun = async (config) => {
     if (isAnySyncRunning) {
       showToast('error', 'A sync is already in progress. Please wait.');
@@ -532,26 +549,43 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {connectionLogs.map((log) => {
                 const isSuccess = log.status === 'SUCCESS';
+                const isInProgress = log.status === 'IN_PROGRESS';
+                const borderColor = isSuccess 
+                  ? 'rgba(16, 185, 129, 0.25)' 
+                  : (isInProgress ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.25)');
+                const barColor = isSuccess 
+                  ? 'var(--success)' 
+                  : (isInProgress ? 'var(--warning, #f59e0b)' : 'var(--danger)');
+                const statusColor = isSuccess 
+                  ? 'var(--success)' 
+                  : (isInProgress ? 'var(--warning, #f59e0b)' : 'var(--danger)');
+
                 return (
                   <div key={log.id} style={{
                     backgroundColor: 'var(--bg-panel)',
                     borderRadius: '12px',
-                    border: `1px solid ${isSuccess ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+                    border: `1px solid ${borderColor}`,
                     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
                     overflow: 'hidden',
                     position: 'relative'
                   }}>
                     <div style={{
                       position: 'absolute', top: 0, left: 0, bottom: 0, width: '4px',
-                      backgroundColor: isSuccess ? 'var(--success)' : 'var(--danger)'
+                      backgroundColor: barColor
                     }}></div>
 
                     <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {isSuccess ? <CheckCircle size={18} color="var(--success)" /> : <XCircle size={18} color="var(--danger)" />}
-                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isSuccess ? 'var(--success)' : 'var(--danger)', letterSpacing: '0.5px' }}>
-                            {log.status}
+                          {isSuccess ? (
+                            <CheckCircle size={18} color="var(--success)" />
+                          ) : isInProgress ? (
+                            <Loader2 size={18} className="spin" color="var(--warning, #f59e0b)" />
+                          ) : (
+                            <XCircle size={18} color="var(--danger)" />
+                          )}
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: statusColor, letterSpacing: '0.5px' }}>
+                            {isInProgress ? 'IN PROGRESS...' : log.status}
                           </span>
                         </div>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
