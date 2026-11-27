@@ -100,7 +100,7 @@ const Connector = () => {
         setStatus(null);
         setIsHidingToast(false);
       }, 300);
-    }, 2000);
+    }, 5000);
   };
 
   useEffect(() => {
@@ -1214,10 +1214,32 @@ const Connector = () => {
           position: 'fixed',
           top: '24px',
           right: '24px',
-          zIndex: 9999
+          zIndex: 9999,
+          maxWidth: '520px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
         }}>
-          {status.type === 'success' ? <CheckCircle size={24} /> : <XCircle size={24} />}
-          <span style={{ fontWeight: 500 }}>{status.msg}</span>
+          {status.type === 'success' ? <CheckCircle size={24} style={{ flexShrink: 0 }} /> : <XCircle size={24} style={{ flexShrink: 0 }} />}
+          <span style={{ fontWeight: 500, wordBreak: 'break-word', flex: 1 }}>{status.msg}</span>
+          <button
+            type="button"
+            onClick={() => setStatus(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              padding: '0 4px',
+              fontSize: '1.2rem',
+              lineHeight: 1,
+              marginLeft: '8px'
+            }}
+            title="Close"
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>
