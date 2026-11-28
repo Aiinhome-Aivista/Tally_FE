@@ -8,8 +8,9 @@ const API_URL = import.meta.env.VITE_API_URL || '/api';
 // Parse ISO timestamp ensuring local time is preserved (prevents UTC +5:30 double conversion)
 const parseLocalDate = (ts) => {
   if (!ts) return new Date();
-  if (typeof ts === 'string' && ts.endsWith('Z')) {
-    return new Date(ts.slice(0, -1));
+  if (typeof ts === 'string') {
+    const cleaned = ts.replace(/(Z|[+-]\d{2}:\d{2})$/, '');
+    return new Date(cleaned);
   }
   return new Date(ts);
 };
@@ -71,8 +72,8 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
   };
 
   const fetchConfigs = async (silent = false) => {
-    // Only show full loading spinner on initial empty load, never during background updates
-    if (!silent && configs.length === 0) setIsLoading(true);
+    // Show loading spinner on manual refresh or initial load, never during silent background updates
+    if (!silent) setIsLoading(true);
     try {
       const res = await axios.get(`${API_URL}/config`);
       
@@ -119,22 +120,56 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
     } catch (err) {
       console.error("Failed to fetch configs", err);
     } finally {
-      if (!silent) setIsLoading(false);
+      if (!silent) {
+        setTimeout(() => setIsLoading(false), 400);
+      }
+    }
+  };
+
+  const fetchLiveStatus = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/sync/live-status`);
+      const statuses = res.data?.statuses || {};
+      setConfigs(prevConfigs =>
+        prevConfigs.map(cfg => {
+          const live = statuses[cfg.connection_name];
+          if (!live) return cfg;
+          let updatedLastSync = cfg.last_sync;
+          if (live.timestamp) {
+            const date = parseLocalDate(live.timestamp);
+            updatedLastSync = new Intl.DateTimeFormat('en-US', {
+              month: 'short', day: 'numeric',
+              hour: '2-digit', minute: '2-digit'
+            }).format(date);
+          }
+          return {
+            ...cfg,
+            sync_status: live.status || cfg.sync_status,
+            rows_processed: live.records_fetched !== undefined ? live.records_fetched : cfg.rows_processed,
+            last_sync: updatedLastSync,
+          };
+        })
+      );
+    } catch (err) {
+      // Silent background poll — ignore transient errors
     }
   };
 
   useEffect(() => {
-    fetchConfigs();
-    
-    // Auto-refresh table silently every 10 seconds so background sync results update automatically
-    const interval = setInterval(() => {
-      fetchConfigs(true);
-    }, 10000);
-
-    return () => clearInterval(interval);
+    fetchConfigs(refreshTrigger > 0);
   }, [refreshTrigger]);
 
   const isAnySyncRunning = isSyncingAll || isRunning || configs.some(c => c.sync_status === 'IN_PROGRESS');
+
+  // Fast silent AJAX polling (2s) while a sync is running, slower (10s) when idle
+  useEffect(() => {
+    const pollMs = isAnySyncRunning ? 2000 : 10000;
+    const interval = setInterval(() => {
+      fetchLiveStatus();
+    }, pollMs);
+
+    return () => clearInterval(interval);
+  }, [isAnySyncRunning]);
 
   useEffect(() => {
     if (onSyncStateChange) {
@@ -522,6 +557,15 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                     <td style={{ fontWeight: 500 }}>
                       {isLoading ? (
                          <CustomSpinner size={18} color="var(--text-secondary)" />
+                      ) : config.sync_status === 'IN_PROGRESS' ? (
+                        config.rows_processed > 0 ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            {config.rows_processed.toLocaleString()}
+                            <CustomSpinner size={15} color="var(--text-secondary)" />
+                          </span>
+                        ) : (
+                          <CustomSpinner size={18} color="var(--text-secondary)" />
+                        )
                       ) : (
                          config.rows_processed.toLocaleString()
                       )}

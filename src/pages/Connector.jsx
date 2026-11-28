@@ -781,14 +781,7 @@ const Connector = () => {
     setIsModalOpen(true);
             }}
           >
-            {(isAnySyncRunning || isSendingRequest) ? (
-              <>
-                <Loader2 size={16} className="spin" />
-                Sync in Progress...
-              </>
-            ) : (
-              'Add Connector'
-            )}
+            Add Connector
           </button>
         </div>
       </div>
