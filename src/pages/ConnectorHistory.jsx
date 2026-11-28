@@ -15,6 +15,182 @@ const parseLocalDate = (ts) => {
   return new Date(ts);
 };
 
+const AuditLogView = ({ message }) => {
+  const [openMetric, setOpenMetric] = useState(null);
+  const [openField, setOpenField] = useState(null);
+
+  let audit = null;
+  if (typeof message === 'string' && message.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed && parsed.audit_version === 2) audit = parsed;
+    } catch {
+      audit = null;
+    }
+  }
+
+  if (!audit) {
+    return (
+      <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: '1.55', whiteSpace: 'pre-line' }}>
+        {message}
+      </div>
+    );
+  }
+
+  const { xml = {}, db = {}, sync = {} } = audit;
+  const toggleMetric = (key) => setOpenMetric(prev => (prev === key ? null : key));
+
+  const renderSampleList = (items, emptyText = 'No example available') => {
+    if (!items || items.length === 0) {
+      return <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>{emptyText}</span>;
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {items.slice(0, 2).map((item, idx) => (
+          <code key={idx} style={{ fontSize: '0.78rem', background: 'rgba(15,23,42,0.06)', padding: '4px 6px', borderRadius: '4px', wordBreak: 'break-all' }}>
+            {typeof item === 'object' ? JSON.stringify(item) : String(item)}
+          </code>
+        ))}
+      </div>
+    );
+  };
+
+  const fieldEntries = Object.entries(xml.field_audit || {});
+
+  const MetricChip = ({ id, label, value, clickable = true }) => (
+    <button
+      type="button"
+      onClick={() => clickable && toggleMetric(id)}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '5px',
+        padding: '3px 8px',
+        borderRadius: '6px',
+        border: openMetric === id ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+        background: openMetric === id ? 'rgba(59,130,246,0.08)' : 'var(--bg-secondary)',
+        color: 'var(--text-primary)',
+        fontSize: '0.78rem',
+        cursor: clickable ? 'pointer' : 'default'
+      }}
+    >
+      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{label}:</span>
+      <strong>{Number(value || 0).toLocaleString()}</strong>
+    </button>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.82rem' }}>
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>XML Processing</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          <MetricChip id="xml_total" label="Total XML Records" value={xml.total_xml_records} />
+          <MetricChip id="xml_fetched" label="Fetched" value={xml.fetched} />
+          <MetricChip id="xml_valid" label="Valid Records" value={xml.valid_records} />
+          <MetricChip id="xml_invalid" label="Invalid Records" value={xml.invalid_records} />
+          <MetricChip id="xml_empty" label="Empty Named Fields" value={xml.empty_named_fields} />
+          <MetricChip id="xml_pairs" label="Blank / Empty Tags Removed" value={xml.malformed_pairs_removed ?? xml.malformed_tokens_removed} />
+        </div>
+        {openMetric === 'xml_total' && (
+          <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>
+            <div><strong>Parent Record:</strong> {xml.parent_record_name || 'N/A'}</div>
+            {renderSampleList(xml.sample_records)}
+          </div>
+        )}
+        {(openMetric === 'xml_fetched' || openMetric === 'xml_valid') && (
+          <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>
+            {renderSampleList(xml.sample_records)}
+          </div>
+        )}
+        {openMetric === 'xml_invalid' && (
+          <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>
+            {renderSampleList(xml.sample_invalid_records)}
+          </div>
+        )}
+        {(openMetric === 'xml_pairs' || openMetric === 'xml_tokens') && (
+          <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>
+            {renderSampleList(xml.malformed_examples)}
+          </div>
+        )}
+        {openMetric === 'xml_empty' && (
+          <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)', maxHeight: '220px', overflowY: 'auto' }}>
+            {fieldEntries.length === 0 ? (
+              <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No example available</span>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
+                    <th style={{ padding: '4px' }}>Field Name</th>
+                    <th style={{ padding: '4px', textAlign: 'right' }}>Empty</th>
+                    <th style={{ padding: '4px', textAlign: 'right' }}>Filled</th>
+                    <th style={{ padding: '4px', textAlign: 'right' }}>Total</th>
+                    <th style={{ padding: '4px' }}>Example</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fieldEntries.map(([fname, fstat]) => (
+                    <React.Fragment key={fname}>
+                      <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                        <td style={{ padding: '4px', fontFamily: 'monospace' }}>{fname}</td>
+                        <td style={{ padding: '4px', textAlign: 'right' }}>{fstat.empty.toLocaleString()}</td>
+                        <td style={{ padding: '4px', textAlign: 'right' }}>{fstat.filled.toLocaleString()}</td>
+                        <td style={{ padding: '4px', textAlign: 'right' }}>{fstat.total.toLocaleString()}</td>
+                        <td style={{ padding: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setOpenField(prev => (prev === fname ? null : fname))}
+                            style={{ fontSize: '0.72rem', color: 'var(--accent-color)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            {openField === fname ? 'Hide' : 'View Example'}
+                          </button>
+                        </td>
+                      </tr>
+                      {openField === fname && (
+                        <tr>
+                          <td colSpan={5} style={{ padding: '6px', background: 'rgba(59,130,246,0.05)' }}>
+                            <div><strong>Empty XML:</strong> <code>{fstat.empty_example || 'No example available'}</code></div>
+                            <div><strong>Filled XML:</strong> <code>{fstat.filled_example || 'No example available'}</code></div>
+                            <div><strong>Sample Value:</strong> {fstat.sample_value || 'N/A'} | <strong>Record ID:</strong> {fstat.record_id || 'N/A'}</div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Database Processing</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          <MetricChip id="db_ins" label="Inserted" value={db.inserted} clickable={false} />
+          <MetricChip id="db_upd" label="Updated" value={db.updated} clickable={false} />
+          <MetricChip id="db_dup" label="Duplicates" value={db.duplicates} clickable={false} />
+          <MetricChip id="db_fail" label="Failed" value={db.failed} clickable={false} />
+          <MetricChip id="db_skip" label="Skipped Records" value={db.skipped_records} clickable={false} />
+        </div>
+        {openMetric === 'db_ins' && <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>{renderSampleList(db.sample_inserted)}</div>}
+        {openMetric === 'db_upd' && <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>{renderSampleList(db.sample_updated)}</div>}
+        {openMetric === 'db_dup' && <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>{renderSampleList(db.sample_duplicates)}</div>}
+        {openMetric === 'db_fail' && <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>{renderSampleList(db.sample_failed)}</div>}
+        {openMetric === 'db_skip' && <div style={{ marginTop: '6px', padding: '8px', borderRadius: '6px', background: 'var(--bg-secondary)' }}><span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No example available</span></div>}
+      </div>
+
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Sync Information</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', lineHeight: '1.55' }}>
+          <div><strong>Company:</strong> {sync.company} | <strong>Report:</strong> {sync.report}</div>
+          <div><strong>Previous LAST_ALTER_ID:</strong> {sync.previous_alter_id} → <strong>Current LAST_ALTER_ID:</strong> {sync.current_alter_id}</div>
+          <div><strong>Start:</strong> {sync.start_time} | <strong>Completed:</strong> {sync.completion_time} | <strong>Status:</strong> {sync.status}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const CustomSpinner = ({ size = 18, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
     <circle cx="12" cy="12" r="3" fill={color} />
@@ -758,9 +934,7 @@ const ConnectorHistory = ({ isEmbedded = false, onConfigUpdated, onRunManualSync
                         </span>
                       </div>
 
-                      <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: '1.5' }}>
-                        {log.message}
-                      </div>
+                      <AuditLogView message={log.message} />
 
                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                         <span style={{
